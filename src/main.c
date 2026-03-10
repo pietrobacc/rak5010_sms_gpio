@@ -41,7 +41,7 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
  * Formato internazionale con prefisso (es. "+41791234567").
  * Lasciare stringa vuota "" per accettare comandi da qualsiasi numero.
  */
-#define AUTHORIZED_NUMBER  "+41798904050"
+#define AUTHORIZED_NUMBER  ""
 
 /**
  * Abilita l'invio di SMS di conferma/esito al mittente.
