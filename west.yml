@@ -1,0 +1,4 @@
+manifest:
+  self:
+    path: rak5010_sms_gpio
+  projects: []

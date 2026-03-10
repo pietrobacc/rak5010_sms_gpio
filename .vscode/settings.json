@@ -1,0 +1,10 @@
+{
+    // Disabilita CMake Tools per questo workspace.
+    // Il build viene gestito da west tramite il pannello nRF Connect,
+    // non da CMake Tools. Senza queste impostazioni CMake Tools si
+    // attiva automaticamente vedendo CMakeLists.txt e genera errori
+    // perche' non trova il cmake dell'SDK nRF Connect nel PATH.
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.autoConfigureOnEdit": false
+}

@@ -1,0 +1,2 @@
+# Load board Kconfig descriptions.
+osource "/opt/nordic/ncs/v3.2.3/zephyr/boards/rakwireless/rak5010/Kconfig.rak5010"

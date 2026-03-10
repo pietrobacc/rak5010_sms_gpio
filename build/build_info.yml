@@ -1,0 +1,59 @@
+cmake:
+  application:
+    configuration-dir: '/Users/pietrobacc/rak5010_sms_gpio'
+    source-dir: '/Users/pietrobacc/rak5010_sms_gpio'
+  board:
+    name: 'rak5010'
+    path:
+     - '/opt/nordic/ncs/v3.2.3/zephyr/boards/rakwireless/rak5010'
+    qualifiers: 'nrf52840'
+    revision: ''
+  devicetree:
+    bindings-dirs:
+     - '/opt/nordic/ncs/v3.2.3/nrf/dts/bindings'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/bindings'
+    files:
+     - '/opt/nordic/ncs/v3.2.3/zephyr/boards/rakwireless/rak5010/rak5010_nrf52840.dts'
+     - '/Users/pietrobacc/rak5010_sms_gpio/app.overlay'
+    include-dirs:
+     - '/opt/nordic/ncs/v3.2.3/nrf/include'
+     - '/opt/nordic/ncs/v3.2.3/nrf/dts/common'
+     - '/opt/nordic/ncs/v3.2.3/nrf/dts/riscv'
+     - '/opt/nordic/ncs/v3.2.3/nrf/dts/arm'
+     - '/opt/nordic/ncs/v3.2.3/nrf/dts'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/include'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/include/zephyr'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/common'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/vendor'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/rx'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/x86'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/xtensa'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/sparc'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/riscv'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/posix'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/arm64'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/arm'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts/arc'
+     - '/opt/nordic/ncs/v3.2.3/zephyr/dts'
+    user-files:
+     - '/Users/pietrobacc/rak5010_sms_gpio/app.overlay'
+  kconfig:
+    files:
+     - '/opt/nordic/ncs/v3.2.3/zephyr/boards/rakwireless/rak5010/rak5010_nrf52840_defconfig'
+     - '/Users/pietrobacc/rak5010_sms_gpio/prj.conf'
+    user-files:
+     - '/Users/pietrobacc/rak5010_sms_gpio/prj.conf'
+  toolchain:
+    name: 'zephyr'
+    path: '/opt/nordic/ncs/toolchains/185bb0e3b6/opt/zephyr-sdk'
+  vendor-specific:
+    nordic:
+      svdfile: '/opt/nordic/ncs/v3.2.3/modules/hal/nordic/nrfx/bsp/stable/mdk/nrf52840.svd'
+  zephyr:
+    version: '4.2.99'
+    zephyr-base: '/opt/nordic/ncs/v3.2.3/zephyr'
+version: '0.1.0'
+west:
+  command: '/opt/nordic/ncs/toolchains/185bb0e3b6/bin/west build -b rak5010/nrf52840 --no-sysbuild'
+  topdir: '/opt/nordic/ncs/v3.2.3'
+  version: '1.4.0'
