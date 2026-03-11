@@ -1,0 +1,20 @@
+# Build
+build/
+
+# VS Code
+.vscode/
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# C/C++
+*.o
+*.a
+*.d
+
+# CMake (se ha percorsi assoluti)
+# CMakePresets.json

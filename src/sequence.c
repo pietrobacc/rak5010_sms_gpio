@@ -246,7 +246,7 @@ int sequence_init(void)
     }
 
     /*
-     * Carica tutte le chiavi "seq/*" dal backend NVS.
+     * Carica tutte le chiavi "seq" dal backend NVS.
      * Invoca settings_set_cb() per ognuna trovata.
      */
     settings_load_subtree("seq");

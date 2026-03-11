@@ -1,2 +1,2 @@
-"nrf":"/opt/nordic/ncs/v3.2.3/nrf":"/opt/nordic/ncs/v3.2.3/nrf/sysbuild"
-"mcuboot":"/opt/nordic/ncs/v3.2.3/bootloader/mcuboot":"/opt/nordic/ncs/v3.2.3/bootloader/mcuboot/boot/zephyr/sysbuild"
+"nrf":"C:/ncs/nrf":"C:/ncs/nrf/sysbuild"
+"mcuboot":"C:/ncs/bootloader/mcuboot":"C:/ncs/bootloader/mcuboot/boot/zephyr/sysbuild"

@@ -6,8 +6,8 @@
 # and/or the west manifest file.
 #
 # See the Modules guide for more information.
-"BOARD_ROOT":"/opt/nordic/ncs/v3.2.3/nrf"
-"DTS_ROOT":"/opt/nordic/ncs/v3.2.3/nrf"
-"SNIPPET_ROOT":"/opt/nordic/ncs/v3.2.3/nrf"
-"SOC_ROOT":"/opt/nordic/ncs/v3.2.3/nrf"
-"MODULE_EXT_ROOT":"/opt/nordic/ncs/v3.2.3/nrf"
+"BOARD_ROOT":"C:/ncs/nrf"
+"DTS_ROOT":"C:/ncs/nrf"
+"SNIPPET_ROOT":"C:/ncs/nrf"
+"SOC_ROOT":"C:/ncs/nrf"
+"MODULE_EXT_ROOT":"C:/ncs/nrf"

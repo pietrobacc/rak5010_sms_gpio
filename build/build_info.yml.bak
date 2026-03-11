@@ -1,5 +1,5 @@
 west:
-  command: /opt/nordic/ncs/toolchains/185bb0e3b6/bin/west build -b rak5010/nrf52840
-    --no-sysbuild
-  topdir: /opt/nordic/ncs/v3.2.3
-  version: 1.4.0
+  command: C:\Users\0964\AppData\Local\Programs\Python\Python312\Scripts\west build
+    -b rak5010/nrf52840 --no-sysbuild
+  topdir: c:\ncs
+  version: 1.5.0

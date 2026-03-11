@@ -15,13 +15,13 @@ debug-runner: jlink
 
 # Common runner configuration values.
 config:
-  board_dir: /opt/nordic/ncs/v3.2.3/zephyr/boards/rakwireless/rak5010
+  board_dir: C:/ncs/zephyr/boards/rakwireless/rak5010
   # Build outputs:
   elf_file: zephyr.elf
   hex_file: zephyr.hex
   bin_file: zephyr.bin
   # Host tools:
-  gdb: /opt/nordic/ncs/toolchains/185bb0e3b6/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb
+  gdb: C:/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe
 
 # Runner specific arguments
 args:
