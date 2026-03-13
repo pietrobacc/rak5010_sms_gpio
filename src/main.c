@@ -22,6 +22,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/drivers/sensor.h>
 #include <string.h>
 #include <stdlib.h>
 #include "gpio_ctrl.h"
@@ -30,6 +31,8 @@
 #include "sequence.h"
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
+
+static const struct device *shtc3_dev;
 
 /* ============================================================================
  * Configurazione utente
@@ -88,6 +91,29 @@ static void str_upper(char *s, size_t n)
     }
 }
 
+/**
+ * @brief Legge i dati del sensore SHTC3.
+ * 
+ * @param temp  Puntatore al valore di temperatura.
+ * @param hum   Puntatore al valore di umidità.
+ */
+static void read_sensor(float *temp, float *hum)
+{
+    if (!device_is_ready(shtc3_dev)) {
+        LOG_WRN("SHTC3 non pronto");
+        *temp = -999.0f;
+        *hum  = -999.0f;
+        return;
+    }
+    struct sensor_value t, h;
+    sensor_sample_fetch(shtc3_dev);
+    sensor_channel_get(shtc3_dev, SENSOR_CHAN_AMBIENT_TEMP, &t);
+    sensor_channel_get(shtc3_dev, SENSOR_CHAN_HUMIDITY,     &h);
+    *temp = sensor_value_to_float(&t);
+    *hum  = sensor_value_to_float(&h);
+}
+
+
 /* ============================================================================
  * Handler comandi SMS
  * ============================================================================ */
@@ -105,12 +131,16 @@ static void handle_config(const char *sender)
 {
     const sequence_params_t *p = sequence_get_params();
     char msg[128];
+    float temp, hum;
+    read_sensor(&temp, &hum);
 
     snprintf(msg, sizeof(msg),
-             "Parametri correnti:\nT1 = %u s\nT2 = %u s\nT3 = %u s",
+             "Parametri correnti:\nT1 = %u s\nT2 = %u s\nT3 = %u s\nTemp = %.1f C\nUmidita = %.1f %%",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
-             p->t3_ms / 1000);
+             p->t3_ms / 1000,
+             (double)temp, 
+             (double)hum);
 
     LOG_INF("CONFIG richiesto: %s", msg);
 
@@ -267,6 +297,7 @@ int main(void)
 {
     LOG_INF("=== RAK5010-M + BG95-M3 | SMS->GPIO Controller ===");
 
+
     /* ------------------------------------------------------------------
      * 1. Inizializzazione GPIO
      *    Deve avvenire prima di qualsiasi altra operazione hardware.
@@ -337,13 +368,28 @@ int main(void)
     /* ------------------------------------------------------------------
      * 8. Stato iniziale GPIO: tutti gli output a LOW
      * ------------------------------------------------------------------ */
-    gpio_ctrl_output_set(GPIO_OUT_1, false);
-    gpio_ctrl_output_set(GPIO_OUT_2, false);
-    gpio_ctrl_output_set(GPIO_OUT_3, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_1, false);
 
     /* LED spento: sistema pronto */
     gpio_ctrl_led_set(false);
     LOG_INF("Sistema pronto. Comandi: START | CONFIG | SET T1/T2/T3 <sec>");
+
+    /* ------------------------------------------------------------------
+ * 8b. Inizializzazione sensore SHTC3
+ * ------------------------------------------------------------------ */
+    shtc3_dev = DEVICE_DT_GET_ANY(sensirion_shtcx);
+    if (shtc3_dev == NULL) {
+        LOG_ERR("SHTC3: device non trovato nel DT");
+    } else if (!device_is_ready(shtc3_dev)) {
+        LOG_ERR("SHTC3: device trovato ma non pronto (init fallita)");
+        LOG_ERR("SHTC3: nome device = %s", shtc3_dev->name);
+    } else {
+        LOG_INF("SHTC3: pronto");
+    }
+
+
+
 
     /* ------------------------------------------------------------------
      * 9. Loop principale
@@ -359,6 +405,22 @@ int main(void)
      * attivo, grazie allo scheduler preemptivo di Zephyr.
      * ------------------------------------------------------------------ */
     while (1) {
+        
+        float temp, hum;
+        read_sensor(&temp, &hum);
+        LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
+        if (gpio_ctrl_mcp_is_ready()) {
+            LOG_INF("EXP_IN: %d %d %d %d %d %d %d %d",
+            gpio_ctrl_exp_in_get(EXP_IN_0),
+            gpio_ctrl_exp_in_get(EXP_IN_1),
+            gpio_ctrl_exp_in_get(EXP_IN_2),
+            gpio_ctrl_exp_in_get(EXP_IN_3),
+            gpio_ctrl_exp_in_get(EXP_IN_4),
+            gpio_ctrl_exp_in_get(EXP_IN_5),
+            gpio_ctrl_exp_in_get(EXP_IN_6),
+            gpio_ctrl_exp_in_get(EXP_IN_7));
+        }
+        
         sms_poll();
 
         /* Heartbeat LED: impulso breve ogni 5 secondi */

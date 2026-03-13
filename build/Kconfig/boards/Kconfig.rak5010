@@ -1,2 +1,0 @@
-# Load board Kconfig descriptions.
-osource "C:/ncs/zephyr/boards/rakwireless/rak5010/Kconfig.rak5010"

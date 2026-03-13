@@ -1,72 +1,53 @@
-/*
- * app.overlay - RAK5010-M con BG95-M3
- *
- * Questo file estende il Device Tree ufficiale della board
- * (rak5010_nrf52840.dts) aggiungendo i nodi hardware specifici
- * dell'applicazione. Non ridefinisce nodi gia' presenti nel DTS
- * ufficiale (uart0, uart1, led0, modem) per evitare conflitti.
- *
- * Mapping header J10 / J12 (da datasheet RAK5010-M-BG95):
- *
- *   J10 pin 4  NRF_IO1  P0.19  OUTPUT  Level-shifted a EXT_VREF
- *   J12 pin 2  NRF_IO2  P0.20  OUTPUT  Level-shifted a EXT_VREF
- *   J12 pin 3  NRF_IO3  P1.02  OUTPUT  Level-shifted a EXT_VREF
- *   J12 pin 4  NRF_IO4  P1.01  INPUT   Level-shifted a EXT_VREF
- *
- * Il level shifter utilizzato e' il TXS0102DCTR (bidirezionale).
- * Il lato B del level shifter e' connesso a EXT_VREF (J12 pin 1).
- *
- * ATTENZIONE: EXT_VREF DEVE essere collegato alla tensione di
- * riferimento del circuito esterno (tipicamente 3.3V) affinche'
- * i level shifter funzionino correttamente. Senza EXT_VREF i
- * GPIO non commutano e le letture di IN4 sono inaffidabili.
- *
- * Copyright (c) 2025
- * SPDX-License-Identifier: Apache-2.0
- */
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <dt-bindings/pinctrl/nrf-pinctrl.h>
 
 / {
-    /*
-     * Output digitali utente collegati ai pin del header di espansione.
-     * Usa compatible "gpio-leds" che in Zephyr rappresenta GPIO di uscita
-     * a stato attivo-alto. Ogni nodo e' accessibile nel codice C tramite
-     * DT_NODELABEL(out1), DT_NODELABEL(out2), DT_NODELABEL(out3).
-     */
     user_outputs {
         compatible = "gpio-leds";
 
-        /* OUT1: NRF_IO1 - P0.19 - J10 pin 4 */
         out1: output_1 {
             gpios = <&gpio0 19 GPIO_ACTIVE_HIGH>;
             label = "Output 1";
         };
 
-        /* OUT2: NRF_IO2 - P0.20 - J12 pin 2 */
         out2: output_2 {
             gpios = <&gpio0 20 GPIO_ACTIVE_HIGH>;
             label = "Output 2";
         };
-
-        /* OUT3: NRF_IO3 - P1.02 - J12 pin 3 */
-        out3: output_3 {
-            gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
-            label = "Output 3";
-        };
     };
+};
 
-    /*
-     * Ingresso digitale utente.
-     * Usa compatible "gpio-keys" che in Zephyr rappresenta GPIO di ingresso.
-     * IN4 viene monitorato dalla sequenza di avvio per verificare
-     * il corretto accensione del dispositivo controllato.
-     */
-    user_inputs {
-        compatible = "gpio-keys";
+&i2c0 {
+    compatible = "nordic,nrf-twim";
+    status = "okay";
+    pinctrl-0 = <&i2c0_default>;
+    pinctrl-names = "default";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
 
-        /* IN4: NRF_IO4 - P1.01 - J12 pin 4 */
-        in4: input_4 {
-            gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
-            label = "Input 4";
+    mcp23017: mcp23017@20 {
+        compatible = "microchip,mcp23017";
+        reg = <0x20>;
+        gpio-controller;
+        #gpio-cells = <2>;
+        ngpios = <16>;
+    };
+};
+
+&i2c1 {
+    compatible = "nordic,nrf-twim";
+
+    shtc3@70 {
+        compatible = "sensirion,shtcx";
+        reg = <0x70>;
+        measure-mode = "normal";
+    };
+};
+
+&pinctrl {
+    i2c0_default: i2c0_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SCL, 0, 19)>,
+                    <NRF_PSEL(TWIM_SDA, 0, 20)>;
         };
     };
 };

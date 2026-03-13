@@ -153,7 +153,7 @@ static void seq_work_handler(struct k_work *work)
      * Step 1: Attiva OUT1, attendi T1
      * OUT1 si attiva e rimane attivo per tutta la durata di T1.
      * ------------------------------------------------------------------ */
-    gpio_ctrl_output_set(GPIO_OUT_1, true);
+    gpio_ctrl_exp_out_set(EXP_OUT_0, true);
     LOG_INF("SEQ: OUT1 ON - attesa T1 (%u s)", params.t1_ms / 1000);
     k_msleep(params.t1_ms);
 
@@ -161,7 +161,7 @@ static void seq_work_handler(struct k_work *work)
      * Step 2: Attiva OUT2 (con OUT1 ancora attivo), attendi T2
      * In questo intervallo entrambi OUT1 e OUT2 sono attivi.
      * ------------------------------------------------------------------ */
-    gpio_ctrl_output_set(GPIO_OUT_2, true);
+    gpio_ctrl_exp_out_set(EXP_OUT_1, true);
     LOG_INF("SEQ: OUT2 ON - attesa T2 (%u s)", params.t2_ms / 1000);
     k_msleep(params.t2_ms);
 
@@ -169,8 +169,8 @@ static void seq_work_handler(struct k_work *work)
      * Step 3: Disattiva entrambi gli output
      * Il dispositivo controllato dovrebbe ora essere autonomo.
      * ------------------------------------------------------------------ */
-    gpio_ctrl_output_set(GPIO_OUT_1, false);
-    gpio_ctrl_output_set(GPIO_OUT_2, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_1, false);
     LOG_INF("SEQ: OUT1+OUT2 OFF - polling IN4 (max %u s)",
             params.t3_ms / 1000);
 
@@ -184,9 +184,9 @@ static void seq_work_handler(struct k_work *work)
     uint32_t elapsed = 0;
 
     while (elapsed < params.t3_ms) {
-        if (gpio_ctrl_in4_get() == 1) {
+        if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
             in4_ok  = true;
-            LOG_INF("SEQ: IN4 HIGH rilevato dopo %u ms", elapsed);
+            LOG_INF("SEQ: EXP_IN_0 HIGH rilevato dopo %u ms", elapsed);
             break;
         }
         k_msleep(50);
@@ -200,15 +200,14 @@ static void seq_work_handler(struct k_work *work)
         LOG_INF("SEQ: completata con SUCCESSO");
         sms_send(reply_to, "Accensione OK - dispositivo operativo");
     } else {
-        LOG_WRN("SEQ: FALLITA - IN4 non HIGH entro %u s",
+        LOG_WRN("SEQ: FALLITA - EXP_IN_0 non HIGH entro %u s",
                 params.t3_ms / 1000);
-        sms_send(reply_to, "Accensione FALLITA - nessun segnale su IN4");
+        sms_send(reply_to, "Accensione FALLITA - nessun segnale su EXP_IN_0");
     }
 
     /* Sicurezza: assicura tutti gli output spenti al termine */
-    gpio_ctrl_output_set(GPIO_OUT_1, false);
-    gpio_ctrl_output_set(GPIO_OUT_2, false);
-    gpio_ctrl_output_set(GPIO_OUT_3, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_1, false);
 
     /*
      * Transizione di stato RUNNING -> IDLE.

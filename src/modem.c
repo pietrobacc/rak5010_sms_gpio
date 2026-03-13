@@ -145,11 +145,11 @@ int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms)
         }
     }
 
-    /* Rimuovi \r dalla risposta per log leggibili */
+    /* Rimuovi \r e \n dalla risposta per log leggibili */
     char log_buf[256];
     int li = 0;
     for (int i = 0; rx_buf[i] && li < 254; i++) {
-        if (rx_buf[i] != '\r') log_buf[li++] = rx_buf[i];
+        if (rx_buf[i] != '\r' && rx_buf[i] != '\n') log_buf[li++] = rx_buf[i];
     }
     log_buf[li] = '\0';
     LOG_INF("AT<< [%s] (atteso %d ms)", log_buf, waited);
