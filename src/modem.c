@@ -210,3 +210,23 @@ int modem_configure_network(void)
     LOG_ERR("Timeout registrazione rete");
     return -ETIMEDOUT;
 }
+
+int modem_get_battery(uint8_t *percent, uint16_t *mv)
+{
+    char resp[64];
+    int ret = modem_send_at("AT+CBC", resp, sizeof(resp), 2000);
+    if (ret != 0) {
+        return -EIO;
+    }
+
+    /* Parsing: +CBC: <status>,<percent>,<mv> */
+    int status, pct, millivolt;
+    if (sscanf(resp, " +CBC: %d,%d,%d", &status, &pct, &millivolt) != 3) {
+        LOG_ERR("AT+CBC: parsing fallito: %s", resp);
+        return -EINVAL;
+    }
+
+    *percent = (uint8_t)pct;
+    *mv      = (uint16_t)millivolt;
+    return 0;
+}

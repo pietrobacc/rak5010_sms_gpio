@@ -8,6 +8,7 @@ int modem_init(void);
 int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms);
 int modem_check(void);
 int modem_configure_network(void);
+int modem_get_battery(uint8_t *percent, uint16_t *mv);
 
 /* Restituisce il device UART del modem (usato da sms.c per Ctrl+Z) */
 const struct device *modem_get_uart(void);

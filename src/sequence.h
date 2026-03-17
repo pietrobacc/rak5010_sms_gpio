@@ -2,7 +2,7 @@
  * sequence.h - Macchina a stati per la sequenza di avvio
  *
  * Gestisce la sequenza temporizzata di attivazione GPIO e il
- * successivo controllo del segnale di feedback IN4. I parametri
+ * successivo controllo del segnale di feedback. I parametri
  * temporali sono configurabili via SMS e persistiti in flash NVS.
  *
  * Flusso della sequenza:

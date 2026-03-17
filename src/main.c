@@ -23,7 +23,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/adc.h>
 #include <string.h>
 #include <stdlib.h>
 #include "gpio_ctrl.h"
@@ -34,26 +33,6 @@
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
 static const struct device *shtc3_dev;
-
-#define VBAT_ADC_NODE   DT_PATH(soc, adc_40007000)
-#define VBAT_ADC_CHANNEL 2  /* AIN2 = P0.04 */
-#define VBAT_DIVIDER_FACTOR  2.5f  /* (1.5M + 1.0M) / 1.0M */
-#define VBAT_ADC_RESOLUTION  12
-#define VBAT_ADC_VREF_MV     3600  /* VDD interno nRF52840 */
-
-static const struct device *adc_dev;
-static int16_t adc_buf;
-static struct adc_sequence adc_seq = {
-    .buffer      = &adc_buf,
-    .buffer_size = sizeof(adc_buf),
-    .resolution  = VBAT_ADC_RESOLUTION,
-};
-static const struct adc_channel_cfg adc_ch_cfg = {
-    .gain             = ADC_GAIN_1_6,
-    .reference        = ADC_REF_INTERNAL,
-    .acquisition_time = ADC_ACQ_TIME_DEFAULT,
-    .channel_id       = VBAT_ADC_CHANNEL,
-};
 
 /* ============================================================================
  * Configurazione utente
@@ -134,29 +113,11 @@ static void read_sensor(float *temp, float *hum)
     *hum  = sensor_value_to_float(&h);
 }
 
-static float read_vbat(void)
-{
-    if (!device_is_ready(adc_dev)) {
-        return -1.0f;
-    }
-    adc_seq.channels = BIT(VBAT_ADC_CHANNEL);
-    if (adc_read(adc_dev, &adc_seq) != 0) {
-        return -1.0f;
-    }
-    int32_t val_mv = adc_buf;
-    adc_raw_to_millivolts(VBAT_ADC_VREF_MV,
-                          ADC_GAIN_1_6,
-                          VBAT_ADC_RESOLUTION,
-                          &val_mv);
-    return (float)val_mv / 1000.0f * VBAT_DIVIDER_FACTOR;
-}
-
-
 /* ============================================================================
  * Handler comandi SMS
  * ============================================================================ */
 
-/**
+/**  
  * @brief Gestisce il comando CONFIG.
  *
  * Legge i parametri correnti della sequenza (T1/T2/T3) e li invia
@@ -169,22 +130,26 @@ static void handle_config(const char *sender)
 {
     const sequence_params_t *p = sequence_get_params();
     char msg[128];
+    
     float temp, hum;
-    float vbat = read_vbat();
-
     read_sensor(&temp, &hum);
+
+    uint8_t bat_pct;
+    uint16_t bat_mv;
+    modem_get_battery(&bat_pct, &bat_mv);
 
     snprintf(msg, sizeof(msg),
              "Parametri correnti:\n"
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
              "Temp = %.1f C\nUmidita = %.1f %%\n"
-             "VBAT = %.2f V",
+             "VBAT = %u mV (%u %%)",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
              (double)temp, 
              (double)hum,
-             (double)vbat);
+             bat_mv,
+             bat_pct);
 
     LOG_INF("CONFIG richiesto: %s", msg);
 
@@ -426,8 +391,8 @@ int main(void)
     LOG_INF("Sistema pronto. Comandi: START | CONFIG | SET T1/T2/T3 <sec>");
 
     /* ------------------------------------------------------------------
- * 8b. Inizializzazione sensore SHTC3
- * ------------------------------------------------------------------ */
+     * 8b. Inizializzazione sensore SHTC3
+     * ------------------------------------------------------------------ */
     shtc3_dev = DEVICE_DT_GET_ANY(sensirion_shtcx);
     if (shtc3_dev == NULL) {
         LOG_ERR("SHTC3: device non trovato nel DT");
@@ -437,16 +402,6 @@ int main(void)
     } else {
         LOG_INF("SHTC3: pronto");
     }
-
-    adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc));
-    if (!device_is_ready(adc_dev)) {
-    LOG_WRN("ADC non pronto");
-    } else {
-        adc_channel_setup(adc_dev, &adc_ch_cfg);
-        LOG_INF("ADC pronto - lettura VBAT su P0.04");
-    }   
-
-
 
 
     /* ------------------------------------------------------------------
@@ -465,13 +420,19 @@ int main(void)
     while (1) {
         
         float temp, hum;
-        float vbat = read_vbat();
+        uint8_t bat_pct;
+        uint16_t bat_mv;
+
+        if (modem_get_battery(&bat_pct, &bat_mv) == 0) {
+            LOG_INF("VBAT: %u mV  %u %%", bat_mv, bat_pct);
+        } else {
+            LOG_WRN("VBAT: lettura fallita");
+        }
+
 
         read_sensor(&temp, &hum);
         LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
-
-        LOG_INF("VBAT: %.2f V", (double)vbat);
-
+        
         if (gpio_ctrl_mcp_is_ready()) {
             LOG_INF("EXP_IN: %d %d %d %d %d %d %d %d",
             gpio_ctrl_exp_in_get(EXP_IN_0),
