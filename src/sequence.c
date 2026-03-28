@@ -233,6 +233,80 @@ static void seq_work_handler(struct k_work *work)
 K_WORK_DEFINE(seq_work, seq_work_handler);
 
 /* ============================================================================
+ * Sequenza TEST
+ * Attiva EXP_OUT0-7 in sequenza a 0.5s, si ferma quando EXP_IN_0=1
+ * ============================================================================ */
+
+static void seq_test_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    LOG_INF("SEQ TEST: avvio - ciclo EXP_OUT0-7, attesa EXP_IN_0 HIGH");
+
+    /* Spegni tutte le uscite prima di iniziare */
+    for (int i = 0; i < EXP_OUT_COUNT; i++) {
+        gpio_ctrl_exp_out_set(i, false);
+    }
+
+    while (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
+        for (int i = 0; i < EXP_OUT_COUNT; i++) {
+
+            /* Controlla IN0 prima di ogni attivazione */
+            if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
+                LOG_INF("SEQ TEST: EXP_IN_0 HIGH - interruzione");
+                goto test_done;
+            }
+
+            gpio_ctrl_exp_out_set(i, true);
+            LOG_INF("SEQ TEST: EXP_OUT%d ON", i);
+            k_msleep(500);
+            gpio_ctrl_exp_out_set(i, false);
+        }
+    }
+
+test_done:
+    /* Sicurezza: spegni tutte le uscite */
+    for (int i = 0; i < EXP_OUT_COUNT; i++) {
+        gpio_ctrl_exp_out_set(i, false);
+    }
+
+    LOG_INF("SEQ TEST: terminata");
+    sms_send(reply_to, "TEST completato - EXP_IN_0 HIGH rilevato");
+
+    state = SEQ_IDLE;
+    LOG_INF("SEQ TEST: IDLE, pronto per nuovo comando");
+}
+
+K_WORK_DEFINE(seq_test_work, seq_test_handler);
+
+int sequence_test_start(const char *sender)
+{
+    if (state == SEQ_RUNNING) {
+        LOG_WRN("sequence_test_start: sequenza gia' in corso");
+        return -EBUSY;
+    }
+
+    strncpy(reply_to, sender, sizeof(reply_to) - 1);
+    reply_to[sizeof(reply_to) - 1] = '\0';
+
+    state = SEQ_RUNNING;
+
+    int ret = k_work_submit(&seq_test_work);
+    if (ret < 0) {
+        LOG_ERR("k_work_submit test fallito: %d", ret);
+        state = SEQ_IDLE;
+        return ret;
+    }
+
+    LOG_INF("SEQ TEST: accodata, risposta a: %s", reply_to);
+    return 0;
+}
+
+
+
+
+
+/* ============================================================================
  * API pubblica
  * ============================================================================ */
 

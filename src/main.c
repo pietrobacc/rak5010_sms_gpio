@@ -277,6 +277,25 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    if (strcmp(t, "TEST") == 0) {
+        if (sequence_get_state() == SEQ_RUNNING) {
+            LOG_WRN("TEST ricevuto ma sequenza gia' in corso - ignorato");
+            if (REPLY_ENABLED) {
+                sms_send(msg->sender, "Sequenza gia' in corso. Attendere.");
+            }
+            return;
+        }    
+        LOG_INF("Comando TEST da %s", msg->sender);
+        if (REPLY_ENABLED) {
+            sms_send(msg->sender,
+                     "TEST avviato.\n"
+                    "Ciclo EXP_OUT0-7 ogni 0.5s.\n"
+                    "Si ferma quando EXP_IN_0 va HIGH.");
+        }
+        sequence_test_start(msg->sender);
+        return;
+}
+
     if (strcmp(t, "CONFIG") == 0) {
         handle_config(msg->sender);
         return;
@@ -296,11 +315,12 @@ static void on_sms_received(const sms_message_t *msg)
     LOG_WRN("Comando non riconosciuto: [%s]", t);
     if (REPLY_ENABLED) {
         sms_send(msg->sender,
-                 "Comandi disponibili:\n"
-                 "  START\n"
-                 "  STATUS\n"
-                 "  CONFIG\n"
-                 "  SET T1/T2/T3 <sec>");
+                "Comandi disponibili:\n"
+                "  START\n"
+                "  TEST\n"
+                "  CONFIG\n"
+                "  STATUS\n"
+                "  SET T1/T2/T3 <sec>");
     }
 }
 

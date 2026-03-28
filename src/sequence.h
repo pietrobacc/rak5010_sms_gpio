@@ -5,32 +5,43 @@
  * successivo controllo del segnale di feedback. I parametri
  * temporali sono configurabili via SMS e persistiti in flash NVS.
  *
- * Flusso della sequenza:
+ * Flusso della sequenza START:
  *
  *   [SMS "START" ricevuto]
  *          |
  *          v
- *   OUT1 = ON
+ *   EXP_OUT0 = ON
  *          |
  *       attesa T1
  *          |
  *          v
- *   OUT2 = ON
+ *   EXP_OUT1 = ON
  *          |
  *       attesa T2
  *          |
  *          v
- *   OUT1 = OFF, OUT2 = OFF
+ *   EXP_OUT0 = OFF, EXP_OUT1 = OFF
  *          |
- *     polling IN4
+ *     polling EXP_IN_0
  *     (ogni 50ms, max T3)
  *          |
- *          +---> IN4 HIGH entro T3 --> SMS "Accensione OK"
+ *          +---> EXP_IN_0 HIGH entro T3 --> SMS "Accensione OK"
  *          |
- *          +---> Timeout T3        --> SMS "Accensione FALLITA"
+ *          +---> Timeout T3              --> SMS "Accensione FALLITA"
  *
- * La sequenza viene eseguita in un thread Zephyr dedicato per non
- * bloccare il thread principale durante le attese (k_msleep).
+ * Flusso della sequenza TEST:
+ *
+ *   [SMS "TEST" ricevuto]
+ *          |
+ *          v
+ *   EXP_OUT0..7 attivati in sequenza (0.5s ciascuno)
+ *          |
+ *     ciclo continuo finche' EXP_IN_0 = 0
+ *          |
+ *          +---> EXP_IN_0 HIGH --> stop + SMS "TEST completato"
+ *
+ * Le sequenze vengono eseguite tramite k_work nel system work queue
+ * di Zephyr, senza bloccare il thread principale (polling SMS).
  *
  * Copyright (c) 2025
  * SPDX-License-Identifier: Apache-2.0
@@ -50,17 +61,17 @@
  * Vengono salvati in NVS e caricati ad ogni riavvio.
  */
 typedef struct {
-    uint32_t t1_ms;  /**< Pausa tra attivazione OUT1 e attivazione OUT2 */
-    uint32_t t2_ms;  /**< Pausa tra attivazione OUT2 e disattivazione OUT1+OUT2 */
-    uint32_t t3_ms;  /**< Timeout massimo attesa segnale HIGH su IN4 */
+    uint32_t t1_ms;  /**< Pausa tra attivazione EXP_OUT0 e EXP_OUT1 */
+    uint32_t t2_ms;  /**< Pausa tra attivazione EXP_OUT1 e disattivazione */
+    uint32_t t3_ms;  /**< Timeout massimo attesa segnale HIGH su EXP_IN_0 */
 } sequence_params_t;
 
 /**
  * @brief Stati della macchina a stati della sequenza.
  */
 typedef enum {
-    SEQ_IDLE    = 0,  /**< Sequenza non in corso, pronta a ricevere START */
-    SEQ_RUNNING = 1,  /**< Sequenza in esecuzione nel thread dedicato */
+    SEQ_IDLE    = 0,  /**< Sequenza non in corso, pronta a ricevere comandi */
+    SEQ_RUNNING = 1,  /**< Sequenza in esecuzione nel work queue */
 } sequence_state_t;
 
 /**
@@ -76,17 +87,29 @@ typedef enum {
 int sequence_init(void);
 
 /**
- * @brief Avvia la sequenza di attivazione GPIO.
+ * @brief Avvia la sequenza di attivazione GPIO (comando START).
  *
- * Lancia il thread dedicato della sequenza. Se una sequenza e' gia'
- * in corso, restituisce -EBUSY senza fare nulla (il chiamante decide
- * come gestire il caso, tipicamente ignorando il comando START).
+ * Sottomette seq_work al system work queue. Se una sequenza e' gia'
+ * in corso, restituisce -EBUSY senza fare nulla.
  *
  * @param sender  Numero del mittente a cui inviare il SMS di esito.
  *                La stringa viene copiata internamente.
  * @return 0 in caso di avvio riuscito, -EBUSY se gia' in corso.
  */
 int sequence_start(const char *sender);
+
+/**
+ * @brief Avvia la sequenza di test GPIO (comando TEST).
+ *
+ * Attiva EXP_OUT0-7 in sequenza a 0.5s ciascuno, in loop continuo
+ * finche' EXP_IN_0 rimane LOW. Si interrompe non appena EXP_IN_0
+ * va HIGH e invia SMS di conferma al mittente.
+ *
+ * @param sender  Numero del mittente a cui inviare il SMS di esito.
+ *                La stringa viene copiata internamente.
+ * @return 0 in caso di avvio riuscito, -EBUSY se gia' in corso.
+ */
+int sequence_test_start(const char *sender);
 
 /**
  * @brief Restituisce lo stato corrente della macchina a stati.
