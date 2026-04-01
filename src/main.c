@@ -23,12 +23,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/adc.h>
 #include <string.h>
 #include <stdlib.h>
 #include "gpio_ctrl.h"
 #include "modem.h"
 #include "sms.h"
 #include "sequence.h"
+
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -51,6 +53,15 @@ static const struct device *shtc3_dev;
  * Impostare a false per disabilitare le risposte SMS (es. in test).
  */
 #define REPLY_ENABLED      true
+
+/* ============================================================================
+ * Definizioni hardware e parametri ADC
+ * ============================================================================ */
+
+#define VEXT_DIVIDER_FACTOR  9.333f   /* (100k + 12k) / 12k */
+
+static const struct adc_dt_spec adc_vext =
+    ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
 
 /* ============================================================================
  * Funzioni di utilita' interne
@@ -113,6 +124,34 @@ static void read_sensor(float *temp, float *hum)
     *hum  = sensor_value_to_float(&h);
 }
 
+/**
+ * @brief Legge la tensione della batteria esterna 12V tramite partitore.
+ *
+ * Partitore: R_high=100kΩ, R_low=12kΩ → fattore 9.333
+ * Pin: P0.05 (AIN3) - J10 pin 3
+ *
+ * @return Tensione in Volt, -1.0 in caso di errore.
+ */
+static float read_vext(void)
+{
+    int16_t buf;
+    struct adc_sequence seq = {
+        .buffer      = &buf,
+        .buffer_size = sizeof(buf),
+    };
+    adc_sequence_init_dt(&adc_vext, &seq);
+
+    if (adc_read_dt(&adc_vext, &seq) != 0) {
+        LOG_ERR("VEXT: adc_read fallito");
+        return -1.0f;
+    }
+
+    int32_t val_mv = buf;
+    adc_raw_to_millivolts_dt(&adc_vext, &val_mv);
+    return (float)val_mv / 1000.0f * VEXT_DIVIDER_FACTOR;
+}
+
+
 /* ============================================================================
  * Handler comandi SMS
  * ============================================================================ */
@@ -129,7 +168,7 @@ static void read_sensor(float *temp, float *hum)
 static void handle_config(const char *sender)
 {
     const sequence_params_t *p = sequence_get_params();
-    char msg[128];
+    char msg[256];
     
     float temp, hum;
     read_sensor(&temp, &hum);
@@ -138,18 +177,22 @@ static void handle_config(const char *sender)
     uint16_t bat_mv;
     modem_get_battery(&bat_pct, &bat_mv);
 
+    float vext = read_vext();
+
     snprintf(msg, sizeof(msg),
              "Parametri correnti:\n"
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
              "Temp = %.1f C\nUmidita = %.1f %%\n"
-             "VBAT = %u mV (%u %%)",
+             "VBAT = %u mV (%u %%)\n"
+             "VEXT = %.2f V",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
              (double)temp, 
              (double)hum,
              bat_mv,
-             bat_pct);
+             bat_pct,
+             (double)vext);
 
     LOG_INF("CONFIG richiesto: %s", msg);
 
@@ -332,7 +375,7 @@ int main(void)
 {
     LOG_INF("=== RAK5010-M + BG95-M3 | SMS->GPIO Controller ===");
 
-
+ 
     /* ------------------------------------------------------------------
      * 1. Inizializzazione GPIO
      *    Deve avvenire prima di qualsiasi altra operazione hardware.
@@ -405,6 +448,12 @@ int main(void)
      * ------------------------------------------------------------------ */
     gpio_ctrl_exp_out_set(EXP_OUT_0, false);
     gpio_ctrl_exp_out_set(EXP_OUT_1, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_2, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_3, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_4, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_5, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_6, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_7, false);
 
     /* LED spento: sistema pronto */
     gpio_ctrl_led_set(false);
@@ -423,6 +472,15 @@ int main(void)
         LOG_INF("SHTC3: pronto");
     }
 
+    /* ------------------------------------------------------------------
+     * 8c. Inizializzazione ADC per lettura VEXT
+     * ------------------------------------------------------------------ */
+    if (!adc_is_ready_dt(&adc_vext)) {
+        LOG_WRN("ADC VEXT non pronto");
+    } else {
+        adc_channel_setup_dt(&adc_vext);
+        LOG_INF("ADC pronto - VEXT su P0.05");
+    }
 
     /* ------------------------------------------------------------------
      * 9. Loop principale
@@ -443,16 +501,24 @@ int main(void)
         uint8_t bat_pct;
         uint16_t bat_mv;
 
+        LOG_INF("---- Ciclo principale: polling SMS e lettura sensori ----");
+
+        // Legge lo stato della batteria del modem (VBAT) e lo logga.
         if (modem_get_battery(&bat_pct, &bat_mv) == 0) {
             LOG_INF("VBAT: %u mV  %u %%", bat_mv, bat_pct);
         } else {
             LOG_WRN("VBAT: lettura fallita");
         }
 
+        // Legge la tensione esterna (VEXT) tramite ADC e la logga.
+        float vext = read_vext();
+        LOG_INF("VEXT: %.2f V", (double)vext);
 
+        // Legge temperatura e umidità dal sensore SHTC3 e li logga.
         read_sensor(&temp, &hum);
         LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
         
+        // Legge lo stato degli ingressi EXP_IN_0..7 e li logga.
         if (gpio_ctrl_mcp_is_ready()) {
             LOG_INF("EXP_IN: %d %d %d %d %d %d %d %d",
             gpio_ctrl_exp_in_get(EXP_IN_0),
@@ -465,6 +531,7 @@ int main(void)
             gpio_ctrl_exp_in_get(EXP_IN_7));
         }
         
+        // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
         sms_poll();
 
         /* Heartbeat LED: impulso breve ogni 5 secondi */
