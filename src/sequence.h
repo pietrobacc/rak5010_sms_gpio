@@ -1,13 +1,9 @@
 /*
  * sequence.h - Macchina a stati per la sequenza di avvio
+  ******************************************************************************
+ * Flusso della sequenza START (generatore):
  *
- * Gestisce la sequenza temporizzata di attivazione GPIO e il
- * successivo controllo del segnale di feedback. I parametri
- * temporali sono configurabili via SMS e persistiti in flash NVS.
- *
- * Flusso della sequenza START:
- *
- *   [SMS "START" ricevuto]
+ *   [SMS "START" | VEXT < S1]
  *          |
  *          v
  *   EXP_OUT0 = ON
@@ -20,32 +16,45 @@
  *       attesa T2
  *          |
  *          v
- *   EXP_OUT0 = OFF, EXP_OUT1 = OFF
+ *   EXP_OUT1 = OFF
  *          |
- *     polling EXP_IN_0
- *     (ogni 50ms, max T3)
+ *     polling EXP_IN_0 (ogni 50ms, max T3)
  *          |
- *          +---> EXP_IN_0 HIGH entro T3 --> SMS "Accensione OK"
+ *          +---> FALLITA --> SMS + EXP_OUT0 OFF
  *          |
- *          +---> Timeout T3              --> SMS "Accensione FALLITA"
+ *          +---> OK --> SMS "Accensione OK"
+ *                  |
+ *               attesa T4 (minuti)  [o SMS "STOP"]
+ *                  |
+ *               EXP_OUT0 OFF
+ *                  |
+ *               SMS "Spegnimento generatore"
  *
- * Flusso della sequenza TEST:
+ ******************************************************************************
+ * Flusso della sequenza START POMPA (generatore + pompa):
  *
- *   [SMS "TEST" ricevuto]
+ *   [SMS "START POMPA"]
  *          |
  *          v
- *   EXP_OUT0..7 attivati in sequenza (0.5s ciascuno)
+ *   (stessa accensione generatore di START)
  *          |
- *     ciclo continuo finche' EXP_IN_0 = 0
+ *          v
+ *   OK --> attesa T5 (secondi)
  *          |
- *          +---> EXP_IN_0 HIGH --> stop + SMS "TEST completato"
- *
- * Le sequenze vengono eseguite tramite k_work nel system work queue
- * di Zephyr, senza bloccare il thread principale (polling SMS).
+ *          v
+ *   EXP_OUT2 = ON
+ *          |
+ *     attesa T6 (minuti) | EXP_IN_1 HIGH | SMS "STOP"
+ *          |
+ *          v
+ *   EXP_OUT2 OFF + EXP_OUT0 OFF
+ *          |
+ *   SMS "Spegnimento generatore e pompa"
  *
  * Copyright (c) 2025
  * SPDX-License-Identifier: Apache-2.0
- */
+ ******************************************************************************/
+
 
 #ifndef SEQUENCE_H
 #define SEQUENCE_H
@@ -54,17 +63,22 @@
 #include <stdbool.h>
 
 /**
- * @brief Parametri temporali della sequenza di avvio.
+ * @brief Struttura dei parametri temporali della sequenza.
  *
- * Tutti i valori sono in millisecondi internamente, ma vengono
- * impostati via SMS in secondi interi (1-300).
- * Vengono salvati in NVS e caricati ad ogni riavvio.
+ * I valori vengono salvati in NVS e persistono ai riavvii. Se non
+ * presenti, vengono usati i default specificati nell'inizializzazione.
  */
 typedef struct {
-    uint32_t t1_ms;  /**< Pausa tra attivazione EXP_OUT0 e EXP_OUT1 */
-    uint32_t t2_ms;  /**< Pausa tra attivazione EXP_OUT1 e disattivazione */
-    uint32_t t3_ms;  /**< Timeout massimo attesa segnale HIGH su EXP_IN_0 */
+    uint32_t t1_ms;   /**< Pausa EXP_OUT0 ON -> EXP_OUT1 ON (secondi) */
+    uint32_t t2_ms;   /**< Pausa EXP_OUT1 ON -> EXP_OUT1 OFF (secondi) */
+    uint32_t t3_ms;   /**< Timeout polling EXP_IN_0 (secondi) */
+    uint32_t t4_min;  /**< Attesa dopo OK prima di spegnere generatore (minuti) */
+    uint32_t t5_ms;   /**< Attesa dopo OK prima di accendere pompa (secondi) */
+    uint32_t t6_min;  /**< Timeout massimo pompa accesa (minuti, 0=infinito) */
+    float    s1_v;    /**< Soglia VEXT per avvio automatico (Volt) */
+    bool     autostart; /**< Avvio automatico quando VEXT < S1 */
 } sequence_params_t;
+
 
 /**
  * @brief Stati della macchina a stati della sequenza.
@@ -77,9 +91,9 @@ typedef enum {
 /**
  * @brief Inizializza il modulo sequenza.
  *
- * Carica i parametri T1/T2/T3 salvati in NVS tramite il Settings
+ * Carica i parametri salvati in NVS tramite il Settings
  * subsystem di Zephyr. Se i parametri non sono presenti (primo avvio
- * o flash cancellata), usa i valori di default: T1=5s, T2=5s, T3=5s.
+ * o flash cancellata), usa i valori di default.
  *
  * @return 0 in caso di successo. In caso di errore Settings, usa i
  *         default e restituisce 0 comunque (non fatale).
@@ -99,6 +113,19 @@ int sequence_init(void);
 int sequence_start(const char *sender);
 
 /**
+ * @brief Avvia la sequenza di avvio con pompa (comando START POMPA).
+ *
+ * Simile a sequence_start(), ma include anche l'attivazione della
+ * pompa dopo un certo intervallo. La sequenza completa e' descritta
+ * nel diagramma all'inizio del file.
+ *
+ * @param sender  Numero del mittente a cui inviare il SMS di esito.
+ *                La stringa viene copiata internamente.
+ * @return 0 in caso di avvio riuscito, -EBUSY se gia' in corso.
+ */
+int sequence_start_pompa(const char *sender);
+
+/**
  * @brief Avvia la sequenza di test GPIO (comando TEST).
  *
  * Attiva EXP_OUT0-7 in sequenza a 0.5s ciascuno, in loop continuo
@@ -110,6 +137,21 @@ int sequence_start(const char *sender);
  * @return 0 in caso di avvio riuscito, -EBUSY se gia' in corso.
  */
 int sequence_test_start(const char *sender);
+
+/**
+ * @brief Interrompe la sequenza in corso (comando STOP).
+ *
+ * Se la sequenza e' in esecuzione, viene terminata immediatamente,
+ * tutte le uscite vengono spente e viene inviato un SMS di conferma
+ * al mittente. Se non c'e' nessuna sequenza in corso, restituisce
+ * -EINVAL senza fare nulla.
+ *
+ * @param sender  Numero del mittente a cui inviare il SMS di conferma.
+ *                La stringa viene copiata internamente.
+ * @return 0 in caso di interruzione riuscita, -EINVAL se nessuna
+ *         sequenza in corso.
+ */
+void sequence_stop(const char *sender);
 
 /**
  * @brief Restituisce lo stato corrente della macchina a stati.
@@ -138,5 +180,24 @@ const sequence_params_t *sequence_get_params(void);
  *         codice negativo in caso di errore di scrittura NVS.
  */
 int sequence_set_param(const char *key, uint32_t value_s);
+
+/**
+ * @brief Imposta il parametro di soglia VEXT e lo salva in NVS.
+ *
+ * @param volt  Valore della soglia in volt (0.1-10.0).
+ * @return 0 in caso di successo, -EINVAL se valore non valido,
+ *         codice negativo in caso di errore di scrittura NVS.
+ */
+int sequence_set_s1(float volt);
+
+/**
+ * @brief Imposta il parametro di avvio automatico e lo salva in NVS.
+ *
+ * @param enabled  true per abilitare l'avvio automatico quando VEXT < S1,
+ *                 false per disabilitare.
+ * @return 0 in caso di successo, codice negativo in caso di errore di
+ *         scrittura NVS.
+ */
+int sequence_set_autostart(bool enabled);
 
 #endif /* SEQUENCE_H */

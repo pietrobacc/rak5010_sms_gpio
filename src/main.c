@@ -46,7 +46,7 @@ static const struct device *shtc3_dev;
  * Formato internazionale con prefisso (es. "+41791234567").
  * Lasciare stringa vuota "" per accettare comandi da qualsiasi numero.
  */
-#define AUTHORIZED_NUMBER  ""
+#define AUTHORIZED_NUMBER  "+41798904050"
 
 /**
  * Abilita l'invio di SMS di conferma/esito al mittente.
@@ -170,30 +170,32 @@ static void handle_config(const char *sender)
     const sequence_params_t *p = sequence_get_params();
     char msg[256];
     
-    float temp, hum;
-    read_sensor(&temp, &hum);
+    //float temp, hum;
+    //read_sensor(&temp, &hum);
 
-    uint8_t bat_pct;
-    uint16_t bat_mv;
-    modem_get_battery(&bat_pct, &bat_mv);
+    //uint8_t bat_pct;
+    //uint16_t bat_mv;
+    //modem_get_battery(&bat_pct, &bat_mv);
 
     float vext = read_vext();
 
     snprintf(msg, sizeof(msg),
-             "Parametri correnti:\n"
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
-             "Temp = %.1f C\nUmidita = %.1f %%\n"
-             "VBAT = %u mV (%u %%)\n"
+             "T4 = %u min\nT5 = %u s\nT6 = %u min\n"
+             "S1 = %.1f V\n"
+             "Autost: %s\n"
              "VEXT = %.2f V",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
-             (double)temp, 
-             (double)hum,
-             bat_mv,
-             bat_pct,
+             p->t4_min,
+             p->t5_ms / 1000,
+             p->t6_min,
+             (double)p->s1_v,
+             p->autostart ? "ON" : "OFF",
              (double)vext);
 
+  
     LOG_INF("CONFIG richiesto: %s", msg);
 
     if (REPLY_ENABLED) {
@@ -202,11 +204,12 @@ static void handle_config(const char *sender)
 }
 
 /**
- * @brief Gestisce il comando SET T1/T2/T3 <valore>.
+ * @brief Gestisce il comando SET T1/T2/T3/T4/T5/T6/S1 <valore>.
  *
- * Formato atteso (dopo conversione maiuscolo): "SET T1 10"
- * Il valore viene validato nel range 1-300 secondi prima
- * di essere passato a sequence_set_param() per il salvataggio NVS.
+ * Formato atteso (dopo conversione maiuscolo):
+ *   "SET T1 10"  -> T1 = 10 secondi
+ *   "SET T4 30"  -> T4 = 30 minuti
+ *   "SET S1 125" -> S1 = 12.5 Volt
  *
  * @param sender  Numero a cui inviare la conferma.
  * @param text    Testo SMS gia' convertito in maiuscolo.
@@ -218,7 +221,7 @@ static void handle_set(const char *sender, const char *text)
 
     /*
      * sscanf con formato "SET %3s %u":
-     *   %3s  - legge max 3 caratteri (es. "T1", "T2", "T3")
+     *   %3s  - legge max 3 caratteri (es. "T1", "T2", "S1")
      *   %u   - legge un intero senza segno
      * Restituisce 2 se entrambi i campi sono stati letti correttamente.
      */
@@ -226,36 +229,74 @@ static void handle_set(const char *sender, const char *text)
         LOG_WRN("SET: formato non valido: '%s'", text);
         if (REPLY_ENABLED) {
             sms_send(sender,
-                     "Formato: SET T1 <sec>\n"
-                     "         SET T2 <sec>\n"
-                     "         SET T3 <sec>\n"
-                     "(valori: 1-300 secondi)");
+                     "Formato:\n"
+                     "  SET T1/T2/T3/T5 <sec>\n"
+                     "  SET T4/T6 <min>\n"
+                     "  SET S1 <volt*10>\n"
+                     "  (es. SET S1 125 = 12.5V)");
         }
         return;
     }
 
-    /* Validazione range lato main per feedback immediato */
-    if (val == 0 || val > 300) {
-        LOG_WRN("SET: valore fuori range: %u", val);
-        if (REPLY_ENABLED) {
-            sms_send(sender, "Valore non valido. Range: 1-300 secondi.");
+    /* Validazione range per tipo di parametro */
+    if (strcmp(key, "T4") == 0 || strcmp(key, "T6") == 0) {
+        if (val > 1440) {
+            LOG_WRN("SET: valore fuori range per %s: %u (max 1440 min)", key, val);
+            if (REPLY_ENABLED) {
+                sms_send(sender, "Valore non valido. T4/T6 max 1440 min (24h).");
+            }
+            return;
+        }
+    } else if (strcmp(key, "S1") == 0) {
+        /* S1: valore in decimi di volt, range 100-140 (10.0V-14.0V) */
+        if (val < 100 || val > 140) {
+            LOG_WRN("SET: valore S1 fuori range: %u (valido 100-140)", val);
+            if (REPLY_ENABLED) {
+                sms_send(sender, "Valore non valido. SET S1 range: 100-140 (es. 125 = 12.5V).");
+            }
+            return;
+        }
+    } else {
+        /* T1/T2/T3/T5: valore in secondi, range 1-300 */
+        if (val == 0 || val > 300) {
+            LOG_WRN("SET: valore fuori range per %s: %u (valido 1-300 s)", key, val);
+            if (REPLY_ENABLED) {
+                sms_send(sender, "Valore non valido. Range: 1-300 secondi.");
+            }
+            return;
+        }
+    }
+
+    /* Gestione S1 separata (float) */
+    if (strcmp(key, "S1") == 0) {
+        float volt = val / 10.0f;
+        int ret = sequence_set_s1(volt);
+        if (ret == 0) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "S1 impostato a %.1f V (salvato)", (double)volt);
+            LOG_INF("%s", msg);
+            if (REPLY_ENABLED) sms_send(sender, msg);
+        } else {
+            LOG_ERR("SET S1 fallito: %d", ret);
+            if (REPLY_ENABLED) sms_send(sender, "Errore salvataggio S1.");
         }
         return;
     }
 
+    /* Gestione T1-T6 */
     int ret = sequence_set_param(key, val);
     if (ret == 0) {
         char msg[64];
-        snprintf(msg, sizeof(msg), "%s impostato a %u s (salvato)", key, val);
-        LOG_INF("%s", msg);
-        if (REPLY_ENABLED) {
-            sms_send(sender, msg);
+        if (strcmp(key, "T4") == 0 || strcmp(key, "T6") == 0) {
+            snprintf(msg, sizeof(msg), "%s impostato a %u min (salvato)", key, val);
+        } else {
+            snprintf(msg, sizeof(msg), "%s impostato a %u s (salvato)", key, val);
         }
+        LOG_INF("%s", msg);
+        if (REPLY_ENABLED) sms_send(sender, msg);
     } else {
         LOG_ERR("SET fallito per '%s': %d", key, ret);
-        if (REPLY_ENABLED) {
-            sms_send(sender, "Parametro non valido. Usa T1, T2 o T3.");
-        }
+        if (REPLY_ENABLED) sms_send(sender, "Parametro non valido. Usa T1-T6 o S1.");
     }
 }
 
@@ -298,24 +339,30 @@ static void on_sms_received(const sms_message_t *msg)
 
     /* --- Dispatch comandi --- */
 
-    if (strcmp(t, "START") == 0) {
-        /*
-         * Avvio sequenza: controlla stato prima di procedere.
-         * Se gia' in corso, informa il mittente e ignora.
-         * Se IDLE, invia conferma e avvia il thread della sequenza.
-         */
+    /* STOP */
+    if (strcmp(t, "STOP") == 0) {
+        sequence_stop(msg->sender);
+        return;
+    }
+
+    /* START POMPA */
+    if (strcmp(t, "START POMPA") == 0) {
         if (sequence_get_state() == SEQ_RUNNING) {
-            LOG_WRN("START ricevuto ma sequenza gia' in corso - ignorato");
-            if (REPLY_ENABLED) {
-                sms_send(msg->sender,
-                         "Sequenza gia' in corso. Attendere il completamento.");
-            }
+            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
             return;
         }
-        LOG_INF("Comando START da %s - avvio sequenza", msg->sender);
-        if (REPLY_ENABLED) {
-            sms_send(msg->sender, "Sequenza avviata. Attendi SMS di esito.");
+        if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore + pompa...");
+        sequence_start_pompa(msg->sender);
+        return;
+    }
+
+    /* START */
+    if (strcmp(t, "START") == 0) {
+        if (sequence_get_state() == SEQ_RUNNING) {
+            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
+            return;
         }
+        if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore...");
         sequence_start(msg->sender);
         return;
     }
@@ -354,16 +401,30 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    if (strcmp(t, "AUTOSTART ON") == 0) {
+       sequence_set_autostart(true);
+        if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: ON (salvato)");
+        return;
+    }
+
+    if (strcmp(t, "AUTOSTART OFF") == 0) {
+        sequence_set_autostart(false);
+        if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: OFF (salvato)");
+        return;
+    }
+
     /* Comando non riconosciuto */
     LOG_WRN("Comando non riconosciuto: [%s]", t);
     if (REPLY_ENABLED) {
         sms_send(msg->sender,
-                "Comandi disponibili:\n"
-                "  START\n"
-                "  TEST\n"
-                "  CONFIG\n"
-                "  STATUS\n"
-                "  SET T1/T2/T3 <sec>");
+         "START\n"
+         "START POMPA\n"
+         "STOP\n"
+         "CONFIG\n"
+         "AUTOSTART ON/OFF\n"
+         "SET T1/T2/T3/T5 <sec>\n"
+         "SET T4/T6 <min>\n"
+         "SET S1 <V*10>");
     }
 }
 
@@ -513,6 +574,22 @@ int main(void)
         // Legge la tensione esterna (VEXT) tramite ADC e la logga.
         float vext = read_vext();
         LOG_INF("VEXT: %.2f V", (double)vext);
+
+        /* Controllo VEXT per avvio automatico */
+        if (vext > 0.0f && vext < sequence_get_params()->s1_v) {
+            if (sequence_get_state() == SEQ_IDLE &&
+                sequence_get_params()->autostart) {
+                LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART ON - avvio automatico generatore",
+                        (double)vext);
+                sms_send(AUTHORIZED_NUMBER,
+                        "ATTENZIONE: VEXT bassa - avvio automatico generatore!");
+                sequence_start(AUTHORIZED_NUMBER);
+            }
+            else {
+                LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato",
+                        (double)vext);
+            }
+        }
 
         // Legge temperatura e umidità dal sensore SHTC3 e li logga.
         read_sensor(&temp, &hum);

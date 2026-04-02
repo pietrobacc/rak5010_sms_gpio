@@ -14,6 +14,7 @@ LOG_MODULE_REGISTER(modem, CONFIG_LOG_DEFAULT_LEVEL);
 #define MODEM_UART_NODE     DT_NODELABEL(uart0)
 #define RX_BUF_SIZE         2048
 #define AT_DEFAULT_TIMEOUT  5000    /* ms */
+#define AT_TIMEOUT_MAX      3  /* reset dopo 3 timeout consecutivi */
 
 /* ----------------------------------------------------------------
  * Variabili statiche
@@ -21,6 +22,7 @@ LOG_MODULE_REGISTER(modem, CONFIG_LOG_DEFAULT_LEVEL);
 static const struct device *uart_dev;
 static char  rx_buf[RX_BUF_SIZE];
 static volatile int rx_pos;
+static int at_timeout_count = 0;
 
 /* ----------------------------------------------------------------
  * Callback UART interrupt-driven
@@ -160,7 +162,17 @@ int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms)
     }
 
     if (waited >= timeout_ms && !resp_has_ok()) {
-        LOG_WRN("Timeout AT comando: %s", cmd);
+        at_timeout_count++;
+        LOG_WRN("Timeout AT comando: %s (%d/%d)",
+                cmd, at_timeout_count, AT_TIMEOUT_MAX);
+        if (at_timeout_count >= AT_TIMEOUT_MAX) {
+            LOG_ERR("Troppi timeout consecutivi - reset modem");
+            at_timeout_count = 0;
+            gpio_ctrl_bg95_reset();
+            modem_configure_network();
+        }
+    } else {
+        at_timeout_count = 0;  /* reset contatore su risposta OK */
     }
 
     return resp_has_ok() ? 0 : -EIO;
