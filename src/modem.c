@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "modem.h"
+#include "gpio_ctrl.h"
 
 LOG_MODULE_REGISTER(modem, CONFIG_LOG_DEFAULT_LEVEL);
 

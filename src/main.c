@@ -30,6 +30,7 @@
 #include "modem.h"
 #include "sms.h"
 #include "sequence.h"
+#include "auth.h"
 
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
@@ -40,13 +41,6 @@ static const struct device *shtc3_dev;
  * Configurazione utente
  * Modificare questi valori prima della compilazione.
  * ============================================================================ */
-
-/**
- * Numero di telefono autorizzato a inviare comandi.
- * Formato internazionale con prefisso (es. "+41791234567").
- * Lasciare stringa vuota "" per accettare comandi da qualsiasi numero.
- */
-#define AUTHORIZED_NUMBER  "+41798904050"
 
 /**
  * Abilita l'invio di SMS di conferma/esito al mittente.
@@ -68,20 +62,18 @@ static const struct adc_dt_spec adc_vext =
  * ============================================================================ */
 
 /**
- * @brief Verifica se il mittente e' autorizzato a inviare comandi.
+ * @brief Verifica se il mittente e' autorizzato.
  *
- * Se AUTHORIZED_NUMBER e' una stringa vuota, tutti i mittenti
- * sono autorizzati (modalita' aperta, usare con cautela).
+ * Confronta il numero del mittente con i numeri autorizzati configurati
+ * in NVS. Se il numero è presente tra quelli autorizzati, restituisce true.
+ * Altrimenti, restituisce false.
  *
- * @param sender  Numero mittente nel formato "+XXXXXXXXXXX".
- * @return true se autorizzato, false altrimenti.
+ * @param sender  Numero mittente da verificare.
+ * @return true se il mittente è autorizzato, false altrimenti.
  */
 static bool is_authorized(const char *sender)
 {
-    if (strlen(AUTHORIZED_NUMBER) == 0) {
-        return true;
-    }
-    return (strcmp(sender, AUTHORIZED_NUMBER) == 0);
+    return auth_is_authorized(sender);
 }
 
 /**
@@ -200,6 +192,19 @@ static void handle_config(const char *sender)
 
     if (REPLY_ENABLED) {
         sms_send(sender, msg);
+    }
+
+    /* Aggiungi dopo VEXT nel messaggio STATUS - secondo SMS */
+    char msg2[160];
+    snprintf(msg2, sizeof(msg2),
+            "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u",
+            strlen(auth_get_number(1)) ? auth_get_number(1) : "-",
+            strlen(auth_get_number(2)) ? auth_get_number(2) : "-",
+            strlen(auth_get_number(3)) ? auth_get_number(3) : "-",
+            auth_get_notify_index());
+    if (REPLY_ENABLED) {
+        k_msleep(2000);
+        sms_send(sender, msg2);
     }
 }
 
@@ -384,7 +389,7 @@ static void on_sms_received(const sms_message_t *msg)
         }
         sequence_test_start(msg->sender);
         return;
-}
+    }
 
     if (strcmp(t, "CONFIG") == 0) {
         handle_config(msg->sender);
@@ -393,6 +398,43 @@ static void on_sms_received(const sms_message_t *msg)
 
     if (strcmp(t, "STATUS") == 0) {
         handle_config(msg->sender);
+        return;
+    }
+
+    /* SET NUM1/2/3 */
+    if (strncmp(t, "SET NUM", 7) == 0) {
+        uint8_t idx = t[7] - '0';
+        if (idx >= 1 && idx <= 3) {
+            /* Trova il numero dopo "SET NUMx " */
+            const char *num = msg->text + 9;  /* usa testo originale non uppercase */
+            while (*num == ' ') num++;
+            int ret = auth_set_number(idx, num);
+            if (ret == 0) {
+                char reply[64];
+                if (strlen(num) > 0) {
+                    snprintf(reply, sizeof(reply), "NUM%u impostato: %s", idx, num);
+                } else {
+                    snprintf(reply, sizeof(reply), "NUM%u cancellato", idx);
+                }
+                if (REPLY_ENABLED) sms_send(msg->sender, reply);
+            }
+        }
+        return;
+    }
+
+    /* SET NOTIFY */
+    if (strncmp(t, "SET NOTIFY ", 11) == 0) {
+        uint8_t idx = t[11] - '0';
+        int ret = auth_set_notify(idx);
+        if (ret == 0) {
+            char reply[64];
+            snprintf(reply, sizeof(reply),
+                    "Notifiche -> NUM%u (%s)",
+                    idx, auth_get_notify_number());
+            if (REPLY_ENABLED) sms_send(msg->sender, reply);
+        } else {
+            if (REPLY_ENABLED) sms_send(msg->sender, "Indice non valido (1-3)");
+        }
         return;
     }
 
@@ -504,6 +546,11 @@ int main(void)
      * ------------------------------------------------------------------ */
     sequence_init();
 
+     /* ------------------------------------------------------------------
+     * 7a. Caricamento parametri numeri autorizzati da NVS
+     * ------------------------------------------------------------------ */
+    auth_init();
+
     /* ------------------------------------------------------------------
      * 8. Stato iniziale GPIO: tutti gli output a LOW
      * ------------------------------------------------------------------ */
@@ -556,11 +603,16 @@ int main(void)
      * Il thread della sequenza (seq_tid) gira in parallelo quando
      * attivo, grazie allo scheduler preemptivo di Zephyr.
      * ------------------------------------------------------------------ */
-    while (1) {
+    
+     float vext_sms = 0.0f; 
+     bool sms_sended = false;
+
+     while (1) {
         
         float temp, hum;
         uint8_t bat_pct;
         uint16_t bat_mv;
+        float delta_vext = 0.2f;
 
         LOG_INF("---- Ciclo principale: polling SMS e lettura sensori ----");
 
@@ -576,18 +628,32 @@ int main(void)
         LOG_INF("VEXT: %.2f V", (double)vext);
 
         /* Controllo VEXT per avvio automatico */
-        if (vext > 0.0f && vext < sequence_get_params()->s1_v) {
-            if (sequence_get_state() == SEQ_IDLE &&
-                sequence_get_params()->autostart) {
-                LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART ON - avvio automatico generatore",
-                        (double)vext);
-                sms_send(AUTHORIZED_NUMBER,
-                        "ATTENZIONE: VEXT bassa - avvio automatico generatore!");
-                sequence_start(AUTHORIZED_NUMBER);
+        if (vext > 0.0f) 
+        {
+            if(vext < sequence_get_params()->s1_v)
+            {
+                if (sequence_get_state() == SEQ_IDLE && sequence_get_params()->autostart) {
+                    LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART ON - avvio automatico generatore",
+                            (double)vext);
+                    sms_send(auth_get_notify_number(),
+                            "ATTENZIONE: VEXT bassa - avvio automatico generatore!");
+                    sequence_start(auth_get_notify_number());
+                }
+                else {
+                    LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato - NON INVIATO A: %s",
+                            (double)vext, auth_get_notify_number());
+                    if (sms_sended == false || vext < vext_sms - delta_vext) {
+                        sms_send(auth_get_notify_number(),
+                                "ATTENZIONE: VEXT bassa (%.2f V) - avvio automatico disabilitato!", (double)vext);
+                        LOG_WRN("VEXT bassa (%.2f V - sms %.2f V) - avvio automatico disabilitato! SMS INVIATO A: %s", (double)vext, (double)vext_sms, auth_get_notify_number());
+                        sms_sended = true;
+                        vext_sms = vext;
+                    }                       
+                }
             }
             else {
-                LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato",
-                        (double)vext);
+                sms_sended = false;
+                vext_sms = vext;
             }
         }
 

@@ -17,12 +17,14 @@ project(rak5010_sms_gpio VERSION 1.0.0)
 #   modem.c      - Comunicazione AT con BG95-M3 via UART0
 #   sms.c        - Invio, ricezione e parsing SMS
 #   sequence.c   - Macchina a stati della sequenza di avvio (thread dedicato)
+#   auth.c       - Gestione autenticazione numeri telefonici
 target_sources(app PRIVATE
     src/main.c
     src/gpio_ctrl.c
     src/modem.c
     src/sms.c
     src/sequence.c
+    src/auth.c
 )
 
 # Aggiunge src/ al path degli include in modo che i file .h siano
