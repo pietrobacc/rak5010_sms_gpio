@@ -644,7 +644,7 @@ int main(void)
                             (double)vext, auth_get_notify_number());
                     if (sms_sended == false || vext < vext_sms - delta_vext) {
                         sms_send(auth_get_notify_number(),
-                                "ATTENZIONE: VEXT bassa (%.2f V) - avvio automatico disabilitato!", (double)vext);
+                                "ATTENZIONE: VEXT bassa - avvio automatico disabilitato!");
                         LOG_WRN("VEXT bassa (%.2f V - sms %.2f V) - avvio automatico disabilitato! SMS INVIATO A: %s", (double)vext, (double)vext_sms, auth_get_notify_number());
                         sms_sended = true;
                         vext_sms = vext;
