@@ -175,8 +175,7 @@ static void handle_config(const char *sender)
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
              "T4 = %u min\nT5 = %u s\nT6 = %u min\n"
              "S1 = %.1f V\n"
-             "Autost: %s\n"
-             "VEXT = %.2f V",
+             "Autost: %s\n",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
@@ -184,9 +183,7 @@ static void handle_config(const char *sender)
              p->t5_ms / 1000,
              p->t6_min,
              (double)p->s1_v,
-             p->autostart ? "ON" : "OFF",
-             (double)vext);
-
+             p->autostart ? "ON" : "OFF");
   
     LOG_INF("CONFIG richiesto: %s", msg);
 
@@ -205,6 +202,37 @@ static void handle_config(const char *sender)
     if (REPLY_ENABLED) {
         k_msleep(2000);
         sms_send(sender, msg2);
+    }
+}
+
+static void handle_status(const char *sender)
+{
+    //const sequence_params_t *p = sequence_get_params();
+    char msg[256];
+    
+    float temp, hum;
+    read_sensor(&temp, &hum);
+
+    uint8_t bat_pct;
+    uint16_t bat_mv;
+    modem_get_battery(&bat_pct, &bat_mv);
+
+    float vext = read_vext();
+
+    snprintf(msg, sizeof(msg),
+            "Temp: %.1f 'C\n"
+            "Umidita: %.1f %\n"
+            "VBATT: %.2f V\n"
+            "VCC: %.2f V",
+            (double)temp,
+            (double)hum,
+            (double)vext,
+            (double)bat_mv/1000);
+  
+    LOG_INF("STATUS richiesto: %s", msg);
+
+    if (REPLY_ENABLED) {
+        sms_send(sender, msg);
     }
 }
 
@@ -397,7 +425,7 @@ static void on_sms_received(const sms_message_t *msg)
     }
 
     if (strcmp(t, "STATUS") == 0) {
-        handle_config(msg->sender);
+        handle_status(msg->sender);
         return;
     }
 
@@ -463,6 +491,7 @@ static void on_sms_received(const sms_message_t *msg)
          "START POMPA\n"
          "STOP\n"
          "CONFIG\n"
+         "STATUS\n"
          "AUTOSTART ON/OFF\n"
          "SET T1/T2/T3/T5 <sec>\n"
          "SET T4/T6 <min>\n"
@@ -476,6 +505,8 @@ static void on_sms_received(const sms_message_t *msg)
 
 int main(void)
 {
+    char msg[256];
+
     LOG_INF("=== RAK5010-M + BG95-M3 | SMS->GPIO Controller ===");
 
  
@@ -604,7 +635,7 @@ int main(void)
      * attivo, grazie allo scheduler preemptivo di Zephyr.
      * ------------------------------------------------------------------ */
     
-     float vext_sms = 0.0f; 
+     float next_sms = sequence_get_params()->s1_v;
      bool sms_sended = false;
 
      while (1) {
@@ -640,20 +671,26 @@ int main(void)
                     sequence_start(auth_get_notify_number());
                 }
                 else {
-                    LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato - NON INVIATO A: %s",
-                            (double)vext, auth_get_notify_number());
-                    if (sms_sended == false || vext < vext_sms - delta_vext) {
-                        sms_send(auth_get_notify_number(),
-                                "ATTENZIONE: VEXT bassa - avvio automatico disabilitato!");
-                        LOG_WRN("VEXT bassa (%.2f V - sms %.2f V) - avvio automatico disabilitato! SMS INVIATO A: %s", (double)vext, (double)vext_sms, auth_get_notify_number());
+                    if (sms_sended == false || vext < next_sms) {
+                        
                         sms_sended = true;
-                        vext_sms = vext;
-                    }                       
+                        next_sms = next_sms - delta_vext;
+                        
+                        snprintf(msg, sizeof(msg), "ATTENZIONE: VEXT bassa (%.2f) - avvio automatico disabilitato!", 
+                                (double)vext);
+                        sms_send(auth_get_notify_number(), msg);
+                        LOG_WRN("VEXT bassa (%.2f V - prossimo sms %.2f V) - avvio automatico disabilitato! SMS INVIATO A: %s", 
+                                (double)vext, (double)next_sms, auth_get_notify_number());
+                    }
+                    else{
+                        LOG_WRN("VEXT bassa (%.2f V - prossimo sms %.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato - SMS NON INVIATO",
+                            (double)vext, (double)next_sms);
+                    }
                 }
             }
             else {
                 sms_sended = false;
-                vext_sms = vext;
+                next_sms = sequence_get_params()->s1_v;
             }
         }
 
