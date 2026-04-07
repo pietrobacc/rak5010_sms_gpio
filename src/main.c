@@ -24,6 +24,8 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/sys/reboot.h>
+#include <hal/nrf_power.h>
 #include <string.h>
 #include <stdlib.h>
 #include "gpio_ctrl.h"
@@ -31,11 +33,13 @@
 #include "sms.h"
 #include "sequence.h"
 #include "auth.h"
+#include "wdt.h"
 
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
-static const struct device *shtc3_dev;
+static uint32_t g_reset_reason = 0;      // Variabile globale per memorizzare la causa del reset
+static const struct device *shtc3_dev;   // Device SHTC3 per lettura temperatura e umidità
 
 /* ============================================================================
  * Configurazione utente
@@ -530,6 +534,28 @@ int main(void)
 {
     char msg[256];uint8_t h, m, s, d, mo;
     uint16_t y;
+    int ret;
+
+    /* Watchdog hardware - prima di tutto */
+    ret = wdt_init();
+    if (ret != 0) {
+        LOG_ERR("WDT init fallito: %d", ret);
+        /* non fatale - continua comunque */
+    }
+
+    /* Leggi causa del reset */
+    g_reset_reason = nrf_power_resetreas_get(NRF_POWER);
+    nrf_power_resetreas_clear(NRF_POWER, g_reset_reason);
+
+    if (g_reset_reason & NRF_POWER_RESETREAS_DOG_MASK) {
+        LOG_WRN("Riavvio da WATCHDOG!");
+    } else if (g_reset_reason & NRF_POWER_RESETREAS_RESETPIN_MASK) {
+        LOG_INF("Riavvio da reset pin");
+    } else if (g_reset_reason & NRF_POWER_RESETREAS_OFF_MASK) {
+     LOG_INF("Avvio da power-on");
+    } else {
+        LOG_INF("Riavvio (causa: 0x%08X)", g_reset_reason);
+    }
    
     LOG_INF("=== RAK5010-M + BG95-M3 | SMS->GPIO Controller ===");
 
@@ -538,7 +564,7 @@ int main(void)
      * 1. Inizializzazione GPIO
      *    Deve avvenire prima di qualsiasi altra operazione hardware.
      * ------------------------------------------------------------------ */
-    int ret = gpio_ctrl_init();
+    ret = gpio_ctrl_init();
     if (ret != 0) {
         LOG_ERR("gpio_ctrl_init fallito: %d", ret);
         return ret;
@@ -605,6 +631,20 @@ int main(void)
      * 7a. Caricamento parametri numeri autorizzati da NVS
      * ------------------------------------------------------------------ */
     auth_init();
+
+    /* ------------------------------------------------------------------
+     * 7b. Notifica avvio o riavvio via SMS
+     *    Se il numero di notifica è configurato, invia un SMS all'avvio.
+     *    Se il reset è stato causato dal watchdog, invia un SMS di allerta.
+     * ------------------------------------------------------------------ */
+    const char *notify = auth_get_notify_number();
+    if (strlen(notify) > 0) {
+      if (g_reset_reason & NRF_POWER_RESETREAS_DOG_MASK) {
+          sms_send(notify, "ATTENZIONE: Riavvio da watchdog!");
+      } else {
+          sms_send(notify, "INFO: Sistema avviato!");
+      }
+    }
 
     /* ------------------------------------------------------------------
      * 8. Stato iniziale GPIO: tutti gli output a LOW
@@ -700,7 +740,7 @@ int main(void)
                     if (sms_sended == false || vext < next_sms) {
                         
                         sms_sended = true;
-                        next_sms = next_sms - delta_vext;
+                        next_sms -= delta_vext;
                         
                         snprintf(msg, sizeof(msg), "ATTENZIONE: VEXT bassa (%.2f) - avvio automatico disabilitato!", 
                                 (double)vext);
@@ -745,6 +785,9 @@ int main(void)
         k_msleep(100);
         gpio_ctrl_led_set(false);
         k_msleep(4900);
+
+        /* Alimenta il watchdog - prova che il loop è vivo */
+        app_wdt_feed();
     }
 
     return 0;

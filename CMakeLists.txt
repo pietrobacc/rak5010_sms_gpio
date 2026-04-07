@@ -25,6 +25,7 @@ target_sources(app PRIVATE
     src/sms.c
     src/sequence.c
     src/auth.c
+    src/wdt.c
 )
 
 # Aggiunge src/ al path degli include in modo che i file .h siano
