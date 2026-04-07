@@ -1,24 +1,28 @@
 /*
  * sequence.c - Macchina a stati sequenza di avvio (implementazione k_work)
  *
- * Sequenze disponibili:
+ * Output:
+ *   EXP_OUT_0 - Generatore (rimane ON fino allo spegnimento)
+ *   EXP_OUT_1 - Avviamento generatore (ON per T2, poi OFF)
+ *   EXP_OUT_2 - Pompa (solo START POMPA, rimane ON fino allo spegnimento)
  *
- *   START - Accensione generatore:
- *     EXP_OUT0 ON -> attesa T1 -> EXP_OUT1 ON -> attesa T2 ->
- *     EXP_OUT1 OFF -> polling EXP_IN_0 (max T3) ->
- *     OK: SMS + attesa T4 min + EXP_OUT0 OFF + SMS spegnimento
- *     FAIL: SMS + EXP_OUT0 OFF
- *     STOP: EXP_OUT0 OFF + SMS
+ * Input:
+ *   EXP_IN_0  - Feedback accensione generatore
+ *   EXP_IN_1  - Trigger spegnimento pompa (solo START POMPA)
  *
- *   START POMPA - Accensione generatore + pompa:
- *     (stessa accensione generatore di START) ->
- *     OK: attesa T5 sec -> EXP_OUT2 ON ->
- *     attesa T6 min | EXP_IN_1 HIGH | STOP ->
- *     EXP_OUT2 OFF + EXP_OUT0 OFF + SMS
+ * Flusso START:
+ *   OUT0 ON -> attesa T1 -> OUT1 ON -> attesa T2 -> OUT1 OFF
+ *   -> polling IN0 (max T3)
+ *   -> FAIL: OUT0 OFF + SMS
+ *   -> OK: SMS + attesa T4 (inf se 0) | STOP -> OUT0 OFF + SMS
  *
- *   TEST - Ciclo output 0-7 ogni 0.5s finche' EXP_IN_0 HIGH
- *
- *   Avvio automatico: se VEXT < S1 e SEQ_IDLE -> START automatico
+ * Flusso START POMPA:
+ *   OUT0 ON -> attesa T1 -> OUT1 ON -> attesa T2 -> OUT1 OFF
+ *   -> polling IN0 (max T3)
+ *   -> FAIL: OUT0 OFF + SMS
+ *   -> OK: SMS + attesa T5 -> OUT2 ON + SMS
+ *   -> attesa T6 (inf se 0) | IN1 HIGH | STOP
+ *   -> OUT2 OFF + OUT0 OFF + SMS
  *
  * Copyright (c) 2025
  * SPDX-License-Identifier: Apache-2.0
@@ -39,35 +43,33 @@ LOG_MODULE_REGISTER(sequence, CONFIG_LOG_DEFAULT_LEVEL);
  * Stato interno del modulo
  * ============================================================================ */
 
-/** Parametri con valori di default */
 static sequence_params_t params = {
-    .t1_ms  = 5000,   /* 5 secondi */
-    .t2_ms  = 5000,   /* 5 secondi */
-    .t3_ms  = 5000,   /* 5 secondi */
-    .t4_min = 30,     /* 30 minuti */
-    .t5_ms  = 10000,  /* 10 secondi */
-    .t6_min = 0,      /* infinito */
-    .s1_v   = 12.5f,  /* 12.5 Volt */
-    .autostart = false,  /* disabilitato per default */
+    .t1_ms     = 5000,
+    .t2_ms     = 5000,
+    .t3_ms     = 5000,
+    .t4_ms     = 10000,  /* ex t5_ms */
+    .t5_min    = 0,      /* ex t4_min, infinito */
+    .t6_min    = 0,
+    .s1_v      = 12.5f,
+    .autostart = false,
 };
 
-/** Stato corrente della macchina a stati */
 static sequence_state_t state = SEQ_IDLE;
-
-/** Numero del mittente a cui inviare gli SMS di esito */
 static char reply_to[24];
-
-/** Flag per interrompere la sequenza via SMS STOP */
 static volatile bool stop_requested = false;
 
+static bool generatore_on = false;
+static bool pompa_on      = false;
+static int64_t generatore_on_time = 0;  /* uptime ms quando acceso */
+static int64_t pompa_on_time      = 0;
+
 /* ============================================================================
- * Settings subsystem - Persistenza parametri in NVS
+ * Settings subsystem
  * ============================================================================ */
 
 static int settings_set_cb(const char *key, size_t len,
                             settings_read_cb read_cb, void *cb_arg)
 {
-    /* S1 e' un float, gli altri sono uint32_t */
     if (strcmp(key, "s1") == 0) {
         float val_f;
         if (len != sizeof(val_f)) return -EINVAL;
@@ -89,8 +91,8 @@ static int settings_set_cb(const char *key, size_t len,
     if      (strcmp(key, "t1") == 0) params.t1_ms  = val_u;
     else if (strcmp(key, "t2") == 0) params.t2_ms  = val_u;
     else if (strcmp(key, "t3") == 0) params.t3_ms  = val_u;
-    else if (strcmp(key, "t4") == 0) params.t4_min = val_u;
-    else if (strcmp(key, "t5") == 0) params.t5_ms  = val_u;
+    else if (strcmp(key, "t4") == 0) params.t4_ms  = val_u;
+    else if (strcmp(key, "t5") == 0) params.t5_min = val_u;
     else if (strcmp(key, "t6") == 0) params.t6_min = val_u;
     else if (strcmp(key, "auto") == 0) params.autostart = (bool)val_u;
     else LOG_WRN("Settings: chiave sconosciuta '%s'", key);
@@ -101,128 +103,153 @@ static int settings_set_cb(const char *key, size_t len,
 SETTINGS_STATIC_HANDLER_DEFINE(seq, "seq", NULL, settings_set_cb, NULL, NULL);
 
 /* ============================================================================
- * Helper - Accensione generatore
- * Comune a START e START POMPA.
+ * Helper - spegnimento di emergenza immediato
  * ============================================================================ */
 
-/**
- * @brief Esegue la sequenza di accensione del generatore.
+static void spegni_tutto(void)
+{
+    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_1, false);
+    gpio_ctrl_exp_out_set(EXP_OUT_2, false);
+    generatore_on = false;
+    pompa_on      = false;
+    LOG_INF("SEQ: tutti gli output spenti");
+}
+
+/* ============================================================================
+ * Helper - accensione generatore
+ * Comune a START e START POMPA.
  *
- * Step 1: EXP_OUT0 ON + attesa T1
- * Step 2: EXP_OUT1 ON + attesa T2
- * Step 3: EXP_OUT1 OFF
- * Step 4: polling EXP_IN_0 ogni 50ms fino a T3
+ * OUT0 ON -> attesa T1 -> OUT1 ON -> attesa T2 -> OUT1 OFF
+ * -> polling IN0 ogni 50ms fino a T3
  *
- * In ogni step controlla stop_requested ogni 100ms.
- *
- * @return true se EXP_IN_0 HIGH rilevato, false se timeout o STOP.
- */
+ * @return true se IN0 HIGH rilevato, false se timeout o STOP.
+ * ============================================================================ */
+
 static bool generatore_accendi(void)
 {
-    stop_requested = false;
-
-    /* Step 1: EXP_OUT0 ON + attesa T1 */
+    /* Step 1: OUT0 ON + attesa T1 */
     gpio_ctrl_exp_out_set(EXP_OUT_0, true);
-    LOG_INF("SEQ: EXP_OUT0 ON - attesa T1 (%u s)", params.t1_ms / 1000);
+    LOG_INF("SEQ: OUT0 ON - attesa T1 (%u s)", params.t1_ms / 1000);
     for (uint32_t i = 0; i < params.t1_ms; i += 100) {
         if (stop_requested) goto gen_stop;
         k_msleep(100);
     }
 
-    /* Step 2: EXP_OUT1 ON + attesa T2 */
+    /* Step 2: OUT1 ON + attesa T2 */
     gpio_ctrl_exp_out_set(EXP_OUT_1, true);
-    LOG_INF("SEQ: EXP_OUT1 ON - attesa T2 (%u s)", params.t2_ms / 1000);
+    LOG_INF("SEQ: OUT1 ON - attesa T2 (%u s)", params.t2_ms / 1000);
     for (uint32_t i = 0; i < params.t2_ms; i += 100) {
         if (stop_requested) goto gen_stop;
         k_msleep(100);
     }
 
-    /* Step 3: EXP_OUT1 OFF */
+    /* Step 3: OUT1 OFF */
     gpio_ctrl_exp_out_set(EXP_OUT_1, false);
-    LOG_INF("SEQ: EXP_OUT1 OFF - polling EXP_IN_0 (max %u s)",
-            params.t3_ms / 1000);
+    LOG_INF("SEQ: OUT1 OFF - polling IN0 (max %u s)", params.t3_ms / 1000);
 
-    /* Step 4: polling EXP_IN_0 ogni 50ms */
+    /* Step 4: polling IN0 ogni 50ms fino a T3 */
     for (uint32_t elapsed = 0; elapsed < params.t3_ms; elapsed += 50) {
         if (stop_requested) goto gen_stop;
         if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
-            LOG_INF("SEQ: EXP_IN_0 HIGH rilevato dopo %u ms", elapsed);
+            LOG_INF("SEQ: IN0 HIGH dopo %u ms", elapsed);
+            generatore_on = true;
+            generatore_on_time = k_uptime_get();
             return true;
         }
         k_msleep(50);
     }
 
-    LOG_WRN("SEQ: timeout EXP_IN_0 - accensione fallita");
+    LOG_WRN("SEQ: timeout IN0 - accensione fallita");
     return false;
 
 gen_stop:
-    LOG_INF("SEQ: STOP ricevuto durante accensione generatore");
-    gpio_ctrl_exp_out_set(EXP_OUT_1, false);
-    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
+    LOG_INF("SEQ: STOP durante accensione generatore");
     return false;
 }
 
-/**
- * @brief Spegne il generatore (EXP_OUT0 OFF).
- */
-static void generatore_spegni(void)
+/* ============================================================================
+ * Helper - attesa spegnimento con 3 trigger
+ * Usato sia da START (solo T4+STOP) che da START POMPA (T6+IN1+STOP)
+ *
+ * @param timeout_min  Timeout in minuti (0 = infinito)
+ * @param check_in1    true = controlla anche EXP_IN_1
+ * @return motivo dello stop: 0=timeout, 1=IN1, 2=STOP
+ * ============================================================================ */
+
+static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
 {
-    gpio_ctrl_exp_out_set(EXP_OUT_0, false);
-    LOG_INF("SEQ: EXP_OUT0 OFF - generatore spento");
+    uint32_t elapsed = 0;
+    uint32_t timeout_ms = timeout_min * 60000U;
+
+    LOG_INF("SEQ: attesa spegnimento - timeout=%umin IN1=%s",
+            timeout_min, check_in1 ? "SI" : "NO");
+
+    while (1) {
+        if (stop_requested) {
+            LOG_INF("SEQ: trigger STOP");
+            return 2;
+        }
+        if (check_in1 && gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
+            LOG_INF("SEQ: trigger IN1 HIGH dopo %u s", elapsed / 1000);
+            return 1;
+        }
+        if (timeout_ms > 0 && elapsed >= timeout_ms) {
+            LOG_INF("SEQ: trigger timeout T=%umin", timeout_min);
+            return 0;
+        }
+        k_msleep(1000);
+        elapsed += 1000;
+    }
 }
 
 /* ============================================================================
- * Handler sequenza START (generatore)
+ * Handler sequenza START (solo generatore)
  * ============================================================================ */
 
 static void seq_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
-    LOG_INF("SEQ START: avvio - T1=%us T2=%us T3=%us T4=%umin S1=%.1fV",
-            params.t1_ms / 1000,
-            params.t2_ms / 1000,
-            params.t3_ms / 1000,
-            params.t4_min,
-            (double)params.s1_v);
+    LOG_INF("SEQ START: T1=%us T2=%us T3=%us T5=%umin",
+            params.t1_ms / 1000, params.t2_ms / 1000,
+            params.t3_ms / 1000, params.t5_min);
 
     /* Accensione generatore */
     bool ok = generatore_accendi();
 
     if (!ok) {
+        spegni_tutto();
         if (stop_requested) {
-            sms_send(reply_to, "Generatore spento su richiesta STOP");
+            sms_send(reply_to, "Generatore spento - STOP ricevuto");
         } else {
-            sms_send(reply_to,
-                     "Accensione FALLITA - nessun segnale su EXP_IN_0");
-            generatore_spegni();
+            sms_send(reply_to, "Accensione FALLITA - nessun feedback su IN0");
         }
         state = SEQ_IDLE;
-        LOG_INF("SEQ START: terminata - IDLE");
         return;
     }
 
     /* Accensione OK */
-    sms_send(reply_to, "Accensione OK - generatore operativo");
+    LOG_INF("SEQ START: generatore acceso - attesa spegnimento T5=%umin",
+            params.t5_min);
+    sms_send(reply_to, "Generatore acceso");
 
-    /* Attesa T4 (minuti) controllando STOP ogni secondo */
-    uint32_t t4_ms = params.t4_min * 60000U;
-    LOG_INF("SEQ START: attesa T4 (%u min)", params.t4_min);
-    for (uint32_t i = 0; i < t4_ms; i += 1000) {
-        if (stop_requested) {
-            LOG_INF("SEQ START: STOP ricevuto durante T4");
-            break;
-        }
-        k_msleep(1000);
-    }
+    /* Attesa T5 | STOP (no IN1) */
+    int trigger = attendi_spegnimento(params.t5_min, false);
 
-    /* Spegnimento generatore */
-    generatore_spegni();
+    /* Spegnimento */
+    spegni_tutto();
 
-    if (stop_requested) {
-        sms_send(reply_to, "Generatore spento su richiesta STOP");
-    } else {
-        sms_send(reply_to, "Spegnimento generatore completato");
+    switch (trigger) {
+    case 0:
+        sms_send(reply_to, "Generatore spento - timeout T4");
+        break;
+    case 2:
+        sms_send(reply_to, "Generatore spento - STOP ricevuto");
+        break;
+    default:
+        sms_send(reply_to, "Generatore spento");
+        break;
     }
 
     state = SEQ_IDLE;
@@ -239,77 +266,67 @@ static void seq_pompa_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
-    LOG_INF("SEQ POMPA: avvio - T5=%us T6=%umin",
-            params.t5_ms / 1000,
+    LOG_INF("SEQ POMPA: T1=%us T2=%us T3=%us T4=%us T6=%umin",
+            params.t1_ms / 1000, params.t2_ms / 1000,
+            params.t3_ms / 1000, params.t4_ms / 1000,
             params.t6_min);
 
     /* Accensione generatore */
     bool ok = generatore_accendi();
 
     if (!ok) {
+        spegni_tutto();
         if (stop_requested) {
-            sms_send(reply_to, "Generatore spento su richiesta STOP");
+            sms_send(reply_to, "Generatore spento - STOP ricevuto");
         } else {
-            sms_send(reply_to,
-                     "Accensione FALLITA - nessun segnale su EXP_IN_0");
-            generatore_spegni();
+            sms_send(reply_to, "Accensione FALLITA - nessun feedback su IN0");
         }
         state = SEQ_IDLE;
-        LOG_INF("SEQ POMPA: terminata - IDLE");
         return;
     }
 
-    /* Accensione OK */
-    sms_send(reply_to, "Accensione OK - generatore operativo");
+    /* Accensione generatore OK */
+    sms_send(reply_to, "Generatore acceso");
+    LOG_INF("SEQ POMPA: generatore acceso - attesa T4 (%u s)",
+            params.t4_ms / 1000);
 
-    /* Attesa T5 prima di accendere la pompa */
-    LOG_INF("SEQ POMPA: attesa T5 (%u s)", params.t5_ms / 1000);
-    for (uint32_t i = 0; i < params.t5_ms; i += 100) {
-        if (stop_requested) goto pompa_stop;
+    /* Attesa T4 prima di accendere la pompa */
+    for (uint32_t i = 0; i < params.t4_ms; i += 100) {
+        if (stop_requested) {
+            spegni_tutto();
+            sms_send(reply_to, "Generatore spento - STOP ricevuto");
+            state = SEQ_IDLE;
+            return;
+        }
         k_msleep(100);
     }
 
     /* Accensione pompa */
     gpio_ctrl_exp_out_set(EXP_OUT_2, true);
-    LOG_INF("SEQ POMPA: EXP_OUT2 ON - pompa avviata");
-    sms_send(reply_to, "Pompa avviata");
+    pompa_on      = true;
+    pompa_on_time = k_uptime_get();
+    LOG_INF("SEQ POMPA: OUT2 ON - pompa accesa");
+    sms_send(reply_to, "Pompa accesa");
 
-    /* Attesa T6 | EXP_IN_1 HIGH | STOP */
-    {
-        uint32_t t6_ms  = params.t6_min * 60000U;
-        uint32_t elapsed = 0;
+    /* Attesa T6 | IN1 | STOP */
+    int trigger = attendi_spegnimento(params.t6_min, true);
 
-        LOG_INF("SEQ POMPA: attesa T6=%umin | EXP_IN_1 | STOP",
-                params.t6_min);
-
-        while (1) {
-            if (stop_requested) {
-                LOG_INF("SEQ POMPA: STOP ricevuto");
-                break;
-            }
-            if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
-                LOG_INF("SEQ POMPA: EXP_IN_1 HIGH - stop pompa");
-                break;
-            }
-            if (t6_ms > 0 && elapsed >= t6_ms) {
-                LOG_INF("SEQ POMPA: timeout T6 (%u min)", params.t6_min);
-                break;
-            }
-            k_msleep(1000);
-            elapsed += 1000;
-        }
-    }
-
-pompa_stop:
     /* Spegnimento pompa e generatore */
-    gpio_ctrl_exp_out_set(EXP_OUT_2, false);
-    LOG_INF("SEQ POMPA: EXP_OUT2 OFF - pompa spenta");
-    generatore_spegni();
+    spegni_tutto();
 
-    if (stop_requested) {
-        sms_send(reply_to, "Generatore e pompa spenti su richiesta STOP");
-    } else {
-        sms_send(reply_to, "Spegnimento generatore e pompa completato");
+    switch (trigger) {
+    case 0:
+        sms_send(reply_to, "Generatore e pompa spenti - timeout T6");
+        break;
+    case 1:
+        sms_send(reply_to, "Generatore e pompa spenti - segnale IN1");
+        break;
+    case 2:
+        sms_send(reply_to, "Generatore e pompa spenti - STOP ricevuto");
+        break;
+    default:
+        sms_send(reply_to, "Generatore e pompa spenti");
+        break;
     }
 
     state = SEQ_IDLE;
@@ -320,43 +337,48 @@ K_WORK_DEFINE(seq_pompa_work, seq_pompa_handler);
 
 /* ============================================================================
  * Handler sequenza TEST
- * Attiva EXP_OUT0-7 in sequenza a 0.5s, si ferma quando EXP_IN_0=1
+ * Attiva EXP_OUT0-7 in sequenza a 0.5s, si ferma quando IN0=1 o STOP
  * ============================================================================ */
 
 static void seq_test_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
-    LOG_INF("SEQ TEST: avvio - ciclo EXP_OUT0-7, attesa EXP_IN_0 HIGH");
+    LOG_INF("SEQ TEST: avvio - ciclo OUT0-7, attesa IN0 HIGH o STOP");
 
-    /* Spegni tutte le uscite prima di iniziare */
     for (int i = 0; i < EXP_OUT_COUNT; i++) {
         gpio_ctrl_exp_out_set(i, false);
     }
 
     while (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
         for (int i = 0; i < EXP_OUT_COUNT; i++) {
+            if (stop_requested) {
+                LOG_INF("SEQ TEST: STOP ricevuto");
+                goto test_done;
+            }
             if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
-                LOG_INF("SEQ TEST: EXP_IN_0 HIGH - interruzione");
+                LOG_INF("SEQ TEST: IN0 HIGH");
                 goto test_done;
             }
             gpio_ctrl_exp_out_set(i, true);
-            LOG_INF("SEQ TEST: EXP_OUT%d ON", i);
+            LOG_INF("SEQ TEST: OUT%d ON", i);
             k_msleep(500);
             gpio_ctrl_exp_out_set(i, false);
         }
     }
 
 test_done:
-    for (int i = 0; i < EXP_OUT_COUNT; i++) {
-        gpio_ctrl_exp_out_set(i, false);
+    spegni_tutto();
+    LOG_INF("SEQ TEST: terminata");
+
+    if (stop_requested) {
+        sms_send(reply_to, "TEST interrotto - STOP ricevuto");
+    } else {
+        sms_send(reply_to, "TEST completato - IN0 HIGH rilevato");
     }
 
-    LOG_INF("SEQ TEST: terminata");
-    sms_send(reply_to, "TEST completato - EXP_IN_0 HIGH rilevato");
-
     state = SEQ_IDLE;
-    LOG_INF("SEQ TEST: IDLE, pronto per nuovo comando");
+    LOG_INF("SEQ TEST: IDLE");
 }
 
 K_WORK_DEFINE(seq_test_work, seq_test_handler);
@@ -375,14 +397,16 @@ int sequence_init(void)
 
     settings_load_subtree("seq");
 
-    LOG_INF("Parametri: T1=%us T2=%us T3=%us T4=%umin T5=%us T6=%umin S1=%.1fV",
-            params.t1_ms  / 1000,
-            params.t2_ms  / 1000,
-            params.t3_ms  / 1000,
-            params.t4_min,
-            params.t5_ms  / 1000,
-            params.t6_min,
-            (double)params.s1_v);
+    LOG_INF("Parametri: T1=%us T2=%us T3=%us T4=%us T5=%umin T6=%umin "
+        "S1=%.1fV Auto=%s",
+        params.t1_ms  / 1000,
+        params.t2_ms  / 1000,
+        params.t3_ms  / 1000,
+        params.t4_ms  / 1000,
+        params.t5_min,
+        params.t6_min,
+        (double)params.s1_v,
+        params.autostart ? "ON" : "OFF");
     return 0;
 }
 
@@ -445,6 +469,7 @@ int sequence_test_start(const char *sender)
     reply_to[sizeof(reply_to) - 1] = '\0';
 
     state = SEQ_RUNNING;
+    stop_requested = false;
 
     int ret = k_work_submit(&seq_test_work);
     if (ret < 0) {
@@ -459,15 +484,25 @@ int sequence_test_start(const char *sender)
 
 void sequence_stop(const char *sender)
 {
+    LOG_INF("STOP richiesto da %s", sender);
+
+    /* Spegnimento immediato di tutti gli output */
+    spegni_tutto();
+
     if (state != SEQ_RUNNING) {
-        LOG_WRN("STOP ricevuto ma nessuna sequenza in corso");
-        sms_send(sender, "Nessuna sequenza in corso");
+        LOG_WRN("STOP: nessuna sequenza in corso");
+        sms_send(sender, "Output spenti (nessuna sequenza in corso)");
         return;
     }
-    LOG_INF("STOP richiesto da %s", sender);
+
+    /* Aggiorna il destinatario della risposta */
     strncpy(reply_to, sender, sizeof(reply_to) - 1);
     reply_to[sizeof(reply_to) - 1] = '\0';
+
+    /* Segnala al work handler di terminare */
     stop_requested = true;
+
+    sms_send(sender, "STOP: generatore e pompa spenti");
 }
 
 sequence_state_t sequence_get_state(void)
@@ -501,17 +536,17 @@ int sequence_set_param(const char *key, uint32_t value_s)
         val_to_save  = params.t3_ms;
         snprintf(settings_key, sizeof(settings_key), "seq/t3");
     } else if (strcmp(key, "T4") == 0) {
-        if (value_s > 1440) return -EINVAL;  /* max 24 ore */
-        params.t4_min = value_s;
-        val_to_save   = params.t4_min;
+        if (value_s == 0 || value_s > 300) return -EINVAL;
+        params.t4_ms = value_s * 1000;
+        val_to_save  = params.t4_ms;
         snprintf(settings_key, sizeof(settings_key), "seq/t4");
     } else if (strcmp(key, "T5") == 0) {
-        if (value_s == 0 || value_s > 300) return -EINVAL;
-        params.t5_ms = value_s * 1000;
-        val_to_save  = params.t5_ms;
+        if (value_s > 1440) return -EINVAL;
+        params.t5_min = value_s;
+        val_to_save   = params.t5_min;
         snprintf(settings_key, sizeof(settings_key), "seq/t5");
     } else if (strcmp(key, "T6") == 0) {
-        if (value_s > 1440) return -EINVAL;  /* max 24 ore */
+        if (value_s > 1440) return -EINVAL;
         params.t6_min = value_s;
         val_to_save   = params.t6_min;
         snprintf(settings_key, sizeof(settings_key), "seq/t6");
@@ -554,4 +589,28 @@ int sequence_set_autostart(bool enabled)
         LOG_INF("Salvato: AUTOSTART = %s", enabled ? "ON" : "OFF");
     }
     return ret;
+}
+
+bool sequence_generatore_is_on(uint32_t *uptime_s)
+{
+    if (uptime_s != NULL) {
+        if (generatore_on) {
+            *uptime_s = (uint32_t)((k_uptime_get() - generatore_on_time) / 1000);
+        } else {
+            *uptime_s = 0;
+        }
+    }
+    return generatore_on;
+}
+
+bool sequence_pompa_is_on(uint32_t *uptime_s)
+{
+    if (uptime_s != NULL) {
+        if (pompa_on) {
+            *uptime_s = (uint32_t)((k_uptime_get() - pompa_on_time) / 1000);
+        } else {
+            *uptime_s = 0;
+        }
+    }
+    return pompa_on;
 }

@@ -243,3 +243,33 @@ int modem_get_battery(uint8_t *percent, uint16_t *mv)
     *mv      = (uint16_t)millivolt;
     return 0;
 }
+
+int modem_get_time(uint8_t *hour, uint8_t *minute, uint8_t *second,
+                   uint8_t *day, uint8_t *month, uint16_t *year)
+{
+    char resp[64];
+    int ret = modem_send_at("AT+CCLK?", resp, sizeof(resp), 2000);
+    if (ret != 0) {
+        LOG_ERR("AT+CCLK fallito");
+        return -EIO;
+    }
+
+    /* Formato risposta: +CCLK: "YY/MM/DD,HH:MM:SS+TZ" */
+    uint8_t yy, mo, dd, hh, mm, ss;
+    int tz;
+
+    if (sscanf(resp, " +CCLK: \"%hhu/%hhu/%hhu,%hhu:%hhu:%hhu%d\"",
+               &yy, &mo, &dd, &hh, &mm, &ss, &tz) != 7) {
+        LOG_ERR("AT+CCLK: parsing fallito: %s", resp);
+        return -EINVAL;
+    }
+
+    if (hour)   *hour   = hh;
+    if (minute) *minute = mm;
+    if (second) *second = ss;
+    if (day)    *day    = dd;
+    if (month)  *month  = mo;
+    if (year)   *year   = 2000 + yy;
+
+    return 0;
+}

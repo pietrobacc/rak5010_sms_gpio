@@ -169,18 +169,18 @@ static void handle_config(const char *sender)
     //uint16_t bat_mv;
     //modem_get_battery(&bat_pct, &bat_mv);
 
-    float vext = read_vext();
+    //float vext = read_vext();
 
     snprintf(msg, sizeof(msg),
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
-             "T4 = %u min\nT5 = %u s\nT6 = %u min\n"
+             "T4 = %u s\nT5 = %u min\nT6 = %u min\n"
              "S1 = %.1f V\n"
              "Autost: %s\n",
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
-             p->t4_min,
-             p->t5_ms / 1000,
+             p->t4_ms / 1000,
+             p->t5_min,
              p->t6_min,
              (double)p->s1_v,
              p->autostart ? "ON" : "OFF");
@@ -191,7 +191,7 @@ static void handle_config(const char *sender)
         sms_send(sender, msg);
     }
 
-    /* Aggiungi dopo VEXT nel messaggio STATUS - secondo SMS */
+    /* Aggiungi secondo SMS - Messaggio CONFIG*/
     char msg2[160];
     snprintf(msg2, sizeof(msg2),
             "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u",
@@ -208,26 +208,49 @@ static void handle_config(const char *sender)
 static void handle_status(const char *sender)
 {
     //const sequence_params_t *p = sequence_get_params();
-    char msg[256];
+    char msg[256];                      // msg per SMS di STATUS
     
-    float temp, hum;
+    float temp, hum;                    // Legge i dati del sensore SHTC3
     read_sensor(&temp, &hum);
 
-    uint8_t bat_pct;
-    uint16_t bat_mv;
+    uint8_t bat_pct;                    // Legge lo stato della batteria dal modem    
+    uint16_t bat_mv;                    // Legge la tensione della batteria in mV dal modem
     modem_get_battery(&bat_pct, &bat_mv);
 
-    float vext = read_vext();
+    uint32_t gen_uptime = 0;            // Variabile per uptime generatore
+    uint32_t pom_uptime = 0;            // Variabile per uptime pompa
+    bool gen_on = sequence_generatore_is_on(&gen_uptime);
+    bool pom_on = sequence_pompa_is_on(&pom_uptime);
+    char gen_str[20] = "OFF";
+    char pom_str[20] = "OFF";
+
+    if (gen_on) {
+    snprintf(gen_str, sizeof(gen_str), "ON (%uh%02um)",
+             gen_uptime / 3600,
+             (gen_uptime % 3600) / 60);
+    }
+    if (pom_on) {
+    snprintf(pom_str, sizeof(pom_str), "ON (%uh%02um)",
+             pom_uptime / 3600,
+             (pom_uptime % 3600) / 60);
+    }
+
+
+    float vext = read_vext();           // Legge la tensione esterna tramite ADC
 
     snprintf(msg, sizeof(msg),
-            "Temp: %.1f 'C\n"
-            "Umidita: %.1f %\n"
-            "VBATT: %.2f V\n"
-            "VCC: %.2f V",
+            "Temp: %.1f'C\n"
+            "Umidita: %.1f%%\n"
+            "VBATT: %.2fV\n"
+            "VCC: %.2fV\n"
+            "Gen: %s\n"
+            "Pom: %s",
             (double)temp,
             (double)hum,
             (double)vext,
-            (double)bat_mv/1000);
+            (double)bat_mv/1000,
+            gen_str,
+            pom_str);
   
     LOG_INF("STATUS richiesto: %s", msg);
 
@@ -263,8 +286,8 @@ static void handle_set(const char *sender, const char *text)
         if (REPLY_ENABLED) {
             sms_send(sender,
                      "Formato:\n"
-                     "  SET T1/T2/T3/T5 <sec>\n"
-                     "  SET T4/T6 <min>\n"
+                     "  SET T1/T2/T3/T4 <sec>\n"
+                     "  SET T5/T6 <min>\n"
                      "  SET S1 <volt*10>\n"
                      "  (es. SET S1 125 = 12.5V)");
         }
@@ -272,11 +295,11 @@ static void handle_set(const char *sender, const char *text)
     }
 
     /* Validazione range per tipo di parametro */
-    if (strcmp(key, "T4") == 0 || strcmp(key, "T6") == 0) {
+    if (strcmp(key, "T5") == 0 || strcmp(key, "T6") == 0) {
         if (val > 1440) {
             LOG_WRN("SET: valore fuori range per %s: %u (max 1440 min)", key, val);
             if (REPLY_ENABLED) {
-                sms_send(sender, "Valore non valido. T4/T6 max 1440 min (24h).");
+                sms_send(sender, "Valore non valido. T5/T6 max 1440 min (24h).");
             }
             return;
         }
@@ -290,7 +313,7 @@ static void handle_set(const char *sender, const char *text)
             return;
         }
     } else {
-        /* T1/T2/T3/T5: valore in secondi, range 1-300 */
+        /* T1/T2/T3/T4: valore in secondi, range 1-300 */
         if (val == 0 || val > 300) {
             LOG_WRN("SET: valore fuori range per %s: %u (valido 1-300 s)", key, val);
             if (REPLY_ENABLED) {
@@ -320,7 +343,7 @@ static void handle_set(const char *sender, const char *text)
     int ret = sequence_set_param(key, val);
     if (ret == 0) {
         char msg[64];
-        if (strcmp(key, "T4") == 0 || strcmp(key, "T6") == 0) {
+        if (strcmp(key, "T5") == 0 || strcmp(key, "T6") == 0) {
             snprintf(msg, sizeof(msg), "%s impostato a %u min (salvato)", key, val);
         } else {
             snprintf(msg, sizeof(msg), "%s impostato a %u s (salvato)", key, val);
@@ -505,8 +528,9 @@ static void on_sms_received(const sms_message_t *msg)
 
 int main(void)
 {
-    char msg[256];
-
+    char msg[256];uint8_t h, m, s, d, mo;
+    uint16_t y;
+   
     LOG_INF("=== RAK5010-M + BG95-M3 | SMS->GPIO Controller ===");
 
  
@@ -645,7 +669,9 @@ int main(void)
         uint16_t bat_mv;
         float delta_vext = 0.2f;
 
-        LOG_INF("---- Ciclo principale: polling SMS e lettura sensori ----");
+        modem_get_time(&h, &m, &s, &d, &mo, &y);
+        LOG_INF("%02u/%02u/%u %02u:%02u:%02u ---- Ciclo principale: polling SMS e lettura sensori ----", 
+                d, mo, y, h, m, s);
 
         // Legge lo stato della batteria del modem (VBAT) e lo logga.
         if (modem_get_battery(&bat_pct, &bat_mv) == 0) {

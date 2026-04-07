@@ -19,4 +19,18 @@ void modem_rx_clear(void);
 /* Copia il contenuto attuale del buffer RX in buf (max len bytes) */
 void modem_rx_read(char *buf, size_t len);
 
+/**
+ * @brief Legge l'ora corrente dal modem via AT+CCLK.
+ *
+ * @param hour    Ore (0-23)
+ * @param minute  Minuti (0-59)
+ * @param second  Secondi (0-59)
+ * @param day     Giorno (1-31)
+ * @param month   Mese (1-12)
+ * @param year    Anno (es. 2026)
+ * @return 0 in caso di successo, negativo in caso di errore.
+ */
+int modem_get_time(uint8_t *hour, uint8_t *minute, uint8_t *second,
+                   uint8_t *day, uint8_t *month, uint16_t *year);
+
 #endif /* MODEM_H */

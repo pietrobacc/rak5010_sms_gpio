@@ -69,14 +69,14 @@
  * presenti, vengono usati i default specificati nell'inizializzazione.
  */
 typedef struct {
-    uint32_t t1_ms;   /**< Pausa EXP_OUT0 ON -> EXP_OUT1 ON (secondi) */
-    uint32_t t2_ms;   /**< Pausa EXP_OUT1 ON -> EXP_OUT1 OFF (secondi) */
-    uint32_t t3_ms;   /**< Timeout polling EXP_IN_0 (secondi) */
-    uint32_t t4_min;  /**< Attesa dopo OK prima di spegnere generatore (minuti) */
-    uint32_t t5_ms;   /**< Attesa dopo OK prima di accendere pompa (secondi) */
-    uint32_t t6_min;  /**< Timeout massimo pompa accesa (minuti, 0=infinito) */
-    float    s1_v;    /**< Soglia VEXT per avvio automatico (Volt) */
-    bool     autostart; /**< Avvio automatico quando VEXT < S1 */
+    uint32_t t1_ms;   /**< Attesa avviamento dopo contatto (secondi) */
+    uint32_t t2_ms;   /**< Durata contatto avviamento (secondi) */
+    uint32_t t3_ms;   /**< Durata massima attesa feedback IN0 (secondi) */
+    uint32_t t4_ms;   /**< Attesa prima accensione pompa dopo OK (secondi) */
+    uint32_t t5_min;  /**< Tempo massimo solo generatore acceso (minuti) */
+    uint32_t t6_min;  /**< Tempo massimo pompa accesa (minuti) */
+    float    s1_v;
+    bool     autostart;
 } sequence_params_t;
 
 
@@ -199,5 +199,19 @@ int sequence_set_s1(float volt);
  *         scrittura NVS.
  */
 int sequence_set_autostart(bool enabled);
+
+/**
+ * @brief Restituisce lo stato del generatore.
+ * @param uptime_s  Se non NULL, viene riempito con i secondi da quando è acceso.
+ * @return true se acceso.
+ */
+bool sequence_generatore_is_on(uint32_t *uptime_s);
+
+/**
+ * @brief Restituisce lo stato della pompa.
+ * @param uptime_s  Se non NULL, viene riempito con i secondi da quando è accesa.
+ * @return true se accesa.
+ */
+bool sequence_pompa_is_on(uint32_t *uptime_s);
 
 #endif /* SEQUENCE_H */
