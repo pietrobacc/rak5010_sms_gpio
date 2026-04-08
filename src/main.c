@@ -770,6 +770,15 @@ int main(void)
             }
         }
 
+         /********************************************* */
+        /* AGGIUNTA PER PROVA CARICATORE*/
+        if(sequence_generatore_is_on(NULL)) {
+            gpio_ctrl_exp_out_set(EXP_OUT_6, true);
+        } else {
+            gpio_ctrl_exp_out_set(EXP_OUT_6, false);
+        }
+        /********************************************* */
+
         // Legge lo stato degli ingressi EXP_IN_0..7 e li logga.
         if (gpio_ctrl_mcp_is_ready()) {
             LOG_INF("EXP_IN : %d %d %d %d %d %d %d %d",
