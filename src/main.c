@@ -427,6 +427,7 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    /*
     if (strcmp(t, "TEST") == 0) {
         if (sequence_get_state() == SEQ_RUNNING) {
             LOG_WRN("TEST ricevuto ma sequenza gia' in corso - ignorato");
@@ -445,6 +446,7 @@ static void on_sms_received(const sms_message_t *msg)
         sequence_test_start(msg->sender);
         return;
     }
+    */
 
     if (strcmp(t, "CONFIG") == 0) {
         handle_config(msg->sender);
@@ -532,8 +534,6 @@ static void on_sms_received(const sms_message_t *msg)
 
 int main(void)
 {
-    char msg[256];uint8_t h, m, s, d, mo;
-    uint16_t y;
     int ret;
 
     /* Watchdog hardware - prima di tutto */
@@ -699,26 +699,33 @@ int main(void)
      * attivo, grazie allo scheduler preemptivo di Zephyr.
      * ------------------------------------------------------------------ */
     
-     float next_sms = sequence_get_params()->s1_v;
-     bool sms_sended = false;
+    float next_sms = sequence_get_params()->s1_v;
+    bool sms_sended = false;
+    float delta_vext = 0.2f;
+    char msg[256];
+    
+    while (1) {
 
-     while (1) {
-        
-        float temp, hum;
-        uint8_t bat_pct;
-        uint16_t bat_mv;
-        float delta_vext = 0.2f;
-
+        // Legge data e ora attuali dal modem
+        uint8_t h, m, s, d, mo;
+        uint16_t y;
         modem_get_time(&h, &m, &s, &d, &mo, &y);
         LOG_INF("%02u/%02u/%u %02u:%02u:%02u ---- Ciclo principale: polling SMS e lettura sensori ----", 
                 d, mo, y, h, m, s);
 
         // Legge lo stato della batteria del modem (VBAT) e lo logga.
-        if (modem_get_battery(&bat_pct, &bat_mv) == 0) {
-            LOG_INF("VBAT: %u mV  %u %%", bat_mv, bat_pct);
-        } else {
-            LOG_WRN("VBAT: lettura fallita");
-        }
+        // uint8_t bat_pct;
+        // uint16_t bat_mv;
+        // if (modem_get_battery(&bat_pct, &bat_mv) == 0) {
+        //     LOG_INF("VBAT: %u mV  %u %%", bat_mv, bat_pct);
+        // } else {
+        //     LOG_WRN("VBAT: lettura fallita");
+        // }
+
+        // Legge temperatura e umidità dal sensore SHTC3 e li logga.
+        // float temp, hum;
+        // read_sensor(&temp, &hum);
+        // LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
 
         // Legge la tensione esterna (VEXT) tramite ADC e la logga.
         float vext = read_vext();
@@ -730,10 +737,13 @@ int main(void)
             if(vext < sequence_get_params()->s1_v)
             {
                 if (sequence_get_state() == SEQ_IDLE && sequence_get_params()->autostart) {
-                    LOG_WRN("VEXT bassa (%.2f V) - AUTOSTART ON - avvio automatico generatore",
-                            (double)vext);
-                    sms_send(auth_get_notify_number(),
-                            "ATTENZIONE: VEXT bassa - avvio automatico generatore!");
+                    
+                    snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - AUTOSTART ON - avvio automatico generatore!", 
+                                (double)vext);
+                    
+                    LOG_WRN("%s", msg);
+                    sms_send(auth_get_notify_number(), msg);
+                            
                     sequence_start(auth_get_notify_number());
                 }
                 else {
@@ -742,14 +752,14 @@ int main(void)
                         sms_sended = true;
                         next_sms -= delta_vext;
                         
-                        snprintf(msg, sizeof(msg), "ATTENZIONE: VEXT bassa (%.2f) - avvio automatico disabilitato!", 
-                                (double)vext);
-                        sms_send(auth_get_notify_number(), msg);
-                        LOG_WRN("VEXT bassa (%.2f V - prossimo sms %.2f V) - avvio automatico disabilitato! SMS INVIATO A: %s", 
-                                (double)vext, (double)next_sms, auth_get_notify_number());
+                        snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - avvio automatico disabilitato!\nProssimo SMS a %.2f V.", 
+                                (double)vext, (double)next_sms);
+
+                        LOG_WRN("%s", msg);
+                        sms_send(auth_get_notify_number(), msg);                        
                     }
-                    else{
-                        LOG_WRN("VEXT bassa (%.2f V - prossimo sms %.2f V) - AUTOSTART OFF o Sequenza già in corso - avvio automatico disabilitato - SMS NON INVIATO",
+                    else {
+                        LOG_WRN("Batteria bassa (%.2f V - SMS NON INVIATO!! - prossimo sms %.2f V)",
                             (double)vext, (double)next_sms);
                     }
                 }
@@ -760,13 +770,9 @@ int main(void)
             }
         }
 
-        // Legge temperatura e umidità dal sensore SHTC3 e li logga.
-        read_sensor(&temp, &hum);
-        LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
-        
         // Legge lo stato degli ingressi EXP_IN_0..7 e li logga.
         if (gpio_ctrl_mcp_is_ready()) {
-            LOG_INF("EXP_IN: %d %d %d %d %d %d %d %d",
+            LOG_INF("EXP_IN : %d %d %d %d %d %d %d %d",
             gpio_ctrl_exp_in_get(EXP_IN_0),
             gpio_ctrl_exp_in_get(EXP_IN_1),
             gpio_ctrl_exp_in_get(EXP_IN_2),
@@ -775,6 +781,16 @@ int main(void)
             gpio_ctrl_exp_in_get(EXP_IN_5),
             gpio_ctrl_exp_in_get(EXP_IN_6),
             gpio_ctrl_exp_in_get(EXP_IN_7));
+
+            LOG_INF("EXP_OUT: %d %d %d %d %d %d %d %d",
+            gpio_ctrl_exp_out_get(EXP_OUT_0),
+            gpio_ctrl_exp_out_get(EXP_OUT_1),
+            gpio_ctrl_exp_out_get(EXP_OUT_2),
+            gpio_ctrl_exp_out_get(EXP_OUT_3),
+            gpio_ctrl_exp_out_get(EXP_OUT_4),
+            gpio_ctrl_exp_out_get(EXP_OUT_5),
+            gpio_ctrl_exp_out_get(EXP_OUT_6),
+            gpio_ctrl_exp_out_get(EXP_OUT_7));
         }
         
         // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.

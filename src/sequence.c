@@ -170,7 +170,7 @@ gen_stop:
 
 /* ============================================================================
  * Helper - attesa spegnimento con 3 trigger
- * Usato sia da START (solo T4+STOP) che da START POMPA (T6+IN1+STOP)
+ * Usato sia da START (solo T5+STOP) che da START POMPA (T6+IN1+STOP)
  *
  * @param timeout_min  Timeout in minuti (0 = infinito)
  * @param check_in1    true = controlla anche EXP_IN_1
@@ -242,7 +242,7 @@ static void seq_work_handler(struct k_work *work)
 
     switch (trigger) {
     case 0:
-        sms_send(reply_to, "Generatore spento - timeout T4");
+        sms_send(reply_to, "Generatore spento - timeout T5");
         break;
     case 2:
         sms_send(reply_to, "Generatore spento - STOP ricevuto");
@@ -340,6 +340,7 @@ K_WORK_DEFINE(seq_pompa_work, seq_pompa_handler);
  * Attiva EXP_OUT0-7 in sequenza a 0.5s, si ferma quando IN0=1 o STOP
  * ============================================================================ */
 
+/*
 static void seq_test_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
@@ -379,9 +380,10 @@ test_done:
 
     state = SEQ_IDLE;
     LOG_INF("SEQ TEST: IDLE");
-}
+} 
 
-K_WORK_DEFINE(seq_test_work, seq_test_handler);
+K_WORK_DEFINE(seq_test_work, seq_test_handler); 
+*/
 
 /* ============================================================================
  * API pubblica
@@ -458,6 +460,7 @@ int sequence_start_pompa(const char *sender)
     return 0;
 }
 
+/*
 int sequence_test_start(const char *sender)
 {
     if (state == SEQ_RUNNING) {
@@ -481,6 +484,7 @@ int sequence_test_start(const char *sender)
     LOG_INF("SEQ TEST: accodata, risposta a: %s", reply_to);
     return 0;
 }
+*/
 
 void sequence_stop(const char *sender)
 {
@@ -491,7 +495,7 @@ void sequence_stop(const char *sender)
 
     if (state != SEQ_RUNNING) {
         LOG_WRN("STOP: nessuna sequenza in corso");
-        sms_send(sender, "Output spenti (nessuna sequenza in corso)");
+        sms_send(sender, "STOP ignorato! (nessuna sequenza in corso)");
         return;
     }
 
@@ -502,7 +506,7 @@ void sequence_stop(const char *sender)
     /* Segnala al work handler di terminare */
     stop_requested = true;
 
-    sms_send(sender, "STOP: generatore e pompa spenti");
+    //sms_send(sender, "STOP: generatore e pompa spenti");
 }
 
 sequence_state_t sequence_get_state(void)
