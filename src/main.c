@@ -736,7 +736,7 @@ int main(void)
         {
             if(vext < sequence_get_params()->s1_v)
             {
-                if (sequence_get_state() == SEQ_IDLE && sequence_get_params()->autostart) {
+                if (sequence_get_state() == SEQ_IDLE && sequence_get_params()->autostart) {  // VEXT sotto soglia e autostart abilitato
                     
                     snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - AUTOSTART ON - avvio automatico generatore!", 
                                 (double)vext);
@@ -746,11 +746,11 @@ int main(void)
                             
                     sequence_start(auth_get_notify_number());
                 }
-                else {
+                else if (sequence_get_state() == SEQ_IDLE && !sequence_get_params()->autostart){ // VEXT sotto soglia ma autostart disabilitato
                     if (sms_sended == false || vext < next_sms) {
                         
                         sms_sended = true;
-                        next_sms -= delta_vext;
+                        next_sms = vext - delta_vext;
                         
                         snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - avvio automatico disabilitato!\nProssimo SMS a %.2f V.", 
                                 (double)vext, (double)next_sms);
