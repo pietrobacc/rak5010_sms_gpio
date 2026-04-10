@@ -221,6 +221,13 @@ static void handle_status(const char *sender)
     uint16_t bat_mv;                    // Legge la tensione della batteria in mV dal modem
     modem_get_battery(&bat_pct, &bat_mv);
 
+    uint8_t rssi;               // Variabile per livello segnale RSSI   
+    int16_t dbm;                // Variabile per livello segnale in dBm (se disponibile)
+    char signal_str[20] = "N/A";
+    if (modem_get_signal(&rssi, &dbm) == 0 && rssi != 99) {
+        snprintf(signal_str, sizeof(signal_str), "%d dBm", dbm);
+    }
+
     uint32_t gen_uptime = 0;            // Variabile per uptime generatore
     uint32_t pom_uptime = 0;            // Variabile per uptime pompa
     bool gen_on = sequence_generatore_is_on(&gen_uptime);
@@ -239,7 +246,6 @@ static void handle_status(const char *sender)
              (pom_uptime % 3600) / 60);
     }
 
-
     float vext = read_vext();           // Legge la tensione esterna tramite ADC
 
     snprintf(msg, sizeof(msg),
@@ -247,12 +253,14 @@ static void handle_status(const char *sender)
             "Umidita: %.1f%%\n"
             "VBATT: %.2fV\n"
             "VCC: %.2fV\n"
+            "Segnale: %s\n"
             "Gen: %s\n"
             "Pom: %s",
             (double)temp,
             (double)hum,
             (double)vext,
             (double)bat_mv/1000,
+            signal_str,
             gen_str,
             pom_str);
   
@@ -397,6 +405,26 @@ static void on_sms_received(const sms_message_t *msg)
     /* Conversione maiuscolo per confronto case-insensitive */
     str_upper(t, strlen(t));
 
+    /* Comandi riservati ai tecnici */
+    if (!auth_is_tech(msg->sender)) {
+        /* Numeri cliente: solo STATUS, START, START POMPA, STOP */
+        if (strcmp(t, "STATUS")      != 0 &&
+            strcmp(t, "START")       != 0 &&
+            strcmp(t, "START POMPA") != 0 &&
+            strcmp(t, "STOP")        != 0) {
+            LOG_WRN("Comando non autorizzato per numero cliente: %s", t);
+            if (REPLY_ENABLED) {
+                sms_send(msg->sender,
+                     "Comandi disponibili:\n"
+                     "START\n"
+                     "START POMPA\n"
+                     "STOP\n"
+                     "STATUS");
+            }
+            return;
+        }
+    }
+
     /* --- Dispatch comandi --- */
 
     /* STOP */
@@ -522,8 +550,8 @@ static void on_sms_received(const sms_message_t *msg)
          "CONFIG\n"
          "STATUS\n"
          "AUTOSTART ON/OFF\n"
-         "SET T1/T2/T3/T5 <sec>\n"
-         "SET T4/T6 <min>\n"
+         "SET T1/T2/T3/T4 <sec>\n"
+         "SET T5/T6 <min>\n"
          "SET S1 <V*10>");
     }
 }

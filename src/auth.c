@@ -158,3 +158,10 @@ uint8_t auth_get_notify_index(void)
 {
     return notify_index;
 }
+
+bool auth_is_tech(const char *sender)
+{
+    if (sender == NULL) return false;
+    return (strcmp(sender, TECH_NUMBER_1) == 0 ||
+            strcmp(sender, TECH_NUMBER_2) == 0);
+}

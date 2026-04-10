@@ -63,4 +63,11 @@ const char *auth_get_notify_number(void);
  */
 uint8_t auth_get_notify_index(void);
 
+/**
+ * @brief Verifica se il mittente è un numero tecnico (privilegio completo).
+ * @param sender  Numero mittente.
+ * @return true se è TECH_NUMBER_1 o TECH_NUMBER_2.
+ */
+bool auth_is_tech(const char *sender);
+
 #endif /* AUTH_H */

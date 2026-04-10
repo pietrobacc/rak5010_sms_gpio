@@ -273,3 +273,20 @@ int modem_get_time(uint8_t *hour, uint8_t *minute, uint8_t *second,
 
     return 0;
 }
+
+int modem_get_signal(uint8_t *rssi, int16_t *dbm)
+{
+    char resp[32];
+    if (modem_send_at("AT+CSQ", resp, sizeof(resp), 1000) != 0) {
+        return -EIO;
+    }
+
+    uint8_t r, ber;
+    if (sscanf(resp, " +CSQ: %hhu,%hhu", &r, &ber) != 2) {
+        return -EINVAL;
+    }
+
+    if (rssi) *rssi = r;
+    if (dbm)  *dbm  = (r == 99) ? 0 : (-113 + (r * 2));
+    return 0;
+}

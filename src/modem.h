@@ -33,4 +33,12 @@ void modem_rx_read(char *buf, size_t len);
 int modem_get_time(uint8_t *hour, uint8_t *minute, uint8_t *second,
                    uint8_t *day, uint8_t *month, uint16_t *year);
 
+/** @brief Legge il livello del segnale dal modem via AT+CSQ.
+ *
+ * @param rssi  Livello del segnale (0-31, 99 se sconosciuto)
+ * @param dbm   Livello del segnale in dBm (se disponibile)
+ * @return 0 in caso di successo, negativo in caso di errore.
+ */
+int modem_get_signal(uint8_t *rssi, int16_t *dbm);
+
 #endif /* MODEM_H */
