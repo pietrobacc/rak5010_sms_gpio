@@ -229,6 +229,14 @@ void sms_poll(void)
 {
     char resp[1024];
 
+    /* Verifica modalità testo - potrebbe essere persa dopo reset modem */
+    if (modem_send_at("AT+CMGF?", resp, sizeof(resp), 1000) == 0) {
+        if (strstr(resp, "+CMGF: 0") != NULL) {
+            LOG_WRN("SMS: modalità PDU rilevata - ripristino testo");
+            modem_send_at("AT+CMGF=1", NULL, 0, 1000);
+        }
+    }
+    
     LOG_INF("Polling SMS non letti...");
 
     int ret = modem_send_at("AT+CMGL=\"REC UNREAD\"",

@@ -84,8 +84,10 @@ typedef struct {
  * @brief Stati della macchina a stati della sequenza.
  */
 typedef enum {
-    SEQ_IDLE    = 0,  /**< Sequenza non in corso, pronta a ricevere comandi */
-    SEQ_RUNNING = 1,  /**< Sequenza in esecuzione nel work queue */
+    SEQ_IDLE         = 0,
+    SEQ_RUNNING      = 1,
+    SEQ_GEN_OK       = 2,  /* generatore acceso, attesa T5 o spegnimento */
+    SEQ_POMPA_ON     = 3,  /* pompa accesa */
 } sequence_state_t;
 
 /**
@@ -213,5 +215,14 @@ bool sequence_generatore_is_on(uint32_t *uptime_s);
  * @return true se accesa.
  */
 bool sequence_pompa_is_on(uint32_t *uptime_s);
+
+/**
+ * @brief Aggancia la pompa a una sequenza START già in corso.
+ * Possibile solo se il generatore è già acceso (SEQ_GEN_OK).
+ * @param sender  Numero mittente.
+ * @return 0=ok, -EBUSY=sequenza non in corso, -EAGAIN=generatore non ancora pronto
+ */
+int sequence_attach_pompa(const char *sender);
+
 
 #endif /* SEQUENCE_H */

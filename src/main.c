@@ -239,7 +239,10 @@ static void handle_status(const char *sender)
     snprintf(gen_str, sizeof(gen_str), "ON (%uh%02um)",
              gen_uptime / 3600,
              (gen_uptime % 3600) / 60);
+    } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
+        snprintf(gen_str, sizeof(gen_str), "ON (Manuale!!)");
     }
+
     if (pom_on) {
     snprintf(pom_str, sizeof(pom_str), "ON (%uh%02um)",
              pom_uptime / 3600,
@@ -435,46 +438,54 @@ static void on_sms_received(const sms_message_t *msg)
 
     /* START POMPA */
     if (strcmp(t, "START POMPA") == 0) {
-        if (sequence_get_state() == SEQ_RUNNING) {
-            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
-            return;
+    sequence_state_t st = sequence_get_state();
+
+        if (st == SEQ_IDLE) {
+            if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
+                /* Serbatoio già pieno */
+                if (REPLY_ENABLED) sms_send(msg->sender,
+                        "Avvio pompa bloccato: serbatoio gia' pieno!");
+            } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1 &&
+                    !sequence_generatore_is_on(NULL)) {
+                /* Generatore acceso manualmente - avvia solo pompa */
+                if (REPLY_ENABLED) sms_send(msg->sender,
+                        "Generatore gia' acceso - avvio pompa...");
+                sequence_start_pompa(msg->sender);
+            } else {
+                /* Accensione normale generatore + pompa */
+                if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore + pompa...");
+                sequence_start_pompa(msg->sender);
+            }
+        } else if (st == SEQ_GEN_OK) {
+            int ret = sequence_attach_pompa(msg->sender);
+            if (ret == 0) {
+                if (REPLY_ENABLED) sms_send(msg->sender, "Pompa in aggancio...");
+            }
+        } else if (st == SEQ_POMPA_ON) {
+            if (REPLY_ENABLED) sms_send(msg->sender, "Pompa gia' in funzione.");
+        } else {
+            if (REPLY_ENABLED) sms_send(msg->sender,
+                "Attendere accensione generatore.");
         }
-        if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore + pompa...");
-        sequence_start_pompa(msg->sender);
         return;
     }
 
     /* START */
     if (strcmp(t, "START") == 0) {
-        if (sequence_get_state() == SEQ_RUNNING) {
-            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
-            return;
-        }
-        if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore...");
-        sequence_start(msg->sender);
-        return;
-    }
+        sequence_state_t st = sequence_get_state();
 
-    /*
-    if (strcmp(t, "TEST") == 0) {
-        if (sequence_get_state() == SEQ_RUNNING) {
-            LOG_WRN("TEST ricevuto ma sequenza gia' in corso - ignorato");
-            if (REPLY_ENABLED) {
-                sms_send(msg->sender, "Sequenza gia' in corso. Attendere.");
-            }
-            return;
-        }    
-        LOG_INF("Comando TEST da %s", msg->sender);
-        if (REPLY_ENABLED) {
-            sms_send(msg->sender,
-                     "TEST avviato.\n"
-                    "Ciclo EXP_OUT0-7 ogni 0.5s.\n"
-                    "Si ferma quando EXP_IN_0 va HIGH.");
+        if (st != SEQ_IDLE) {
+            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
+        } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
+            if (REPLY_ENABLED) sms_send(msg->sender,
+                    "Avvio bloccato: generatore gia' acceso.\n"
+                    "Spegnere fisicamente prima di usare START.");
+        } else {
+            if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore...");
+            sequence_start(msg->sender);
         }
-        sequence_test_start(msg->sender);
         return;
     }
-    */
 
     if (strcmp(t, "CONFIG") == 0) {
         handle_config(msg->sender);
@@ -734,12 +745,10 @@ int main(void)
     
     while (1) {
 
-        // Legge data e ora attuali dal modem
-        uint8_t h, m, s, d, mo;
-        uint16_t y;
-        modem_get_time(&h, &m, &s, &d, &mo, &y);
-        LOG_INF("%02u/%02u/%u %02u:%02u:%02u ---- Ciclo principale: polling SMS e lettura sensori ----", 
-                d, mo, y, h, m, s);
+        LOG_INF("---- Ciclo principale: polling SMS e lettura sensori ----");
+
+        // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
+        sms_poll();
 
         // Legge lo stato della batteria del modem (VBAT) e lo logga.
         // uint8_t bat_pct;
@@ -798,15 +807,6 @@ int main(void)
             }
         }
 
-         /********************************************* */
-        /* AGGIUNTA PER PROVA CARICATORE*/
-        if(sequence_generatore_is_on(NULL)) {
-            gpio_ctrl_exp_out_set(EXP_OUT_6, true);
-        } else {
-            gpio_ctrl_exp_out_set(EXP_OUT_6, false);
-        }
-        /********************************************* */
-
         // Legge lo stato degli ingressi EXP_IN_0..7 e li logga.
         if (gpio_ctrl_mcp_is_ready()) {
             LOG_INF("EXP_IN : %d %d %d %d %d %d %d %d",
@@ -830,14 +830,18 @@ int main(void)
             gpio_ctrl_exp_out_get(EXP_OUT_7));
         }
         
-        // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
-        sms_poll();
-
         /* Heartbeat LED: impulso breve ogni 5 secondi */
         gpio_ctrl_led_set(true);
         k_msleep(100);
         gpio_ctrl_led_set(false);
         k_msleep(4900);
+
+        // Legge data e ora attuali dal modem
+        //uint8_t h, m, s, d, mo;
+        //uint16_t y;
+        //modem_get_time(&h, &m, &s, &d, &mo, &y);
+        //LOG_INF("---- %02u/%02u/%u %02u:%02u:%02u      Fine ciclo      ----", 
+        //        d, mo, y, h, m, s);
 
         /* Alimenta il watchdog - prova che il loop è vivo */
         app_wdt_feed();
