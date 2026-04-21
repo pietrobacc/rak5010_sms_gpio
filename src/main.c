@@ -56,7 +56,9 @@ static const struct device *shtc3_dev;   // Device SHTC3 per lettura temperatura
  * Definizioni hardware e parametri ADC
  * ============================================================================ */
 
-#define VEXT_DIVIDER_FACTOR  9.333f   /* (100k + 12k) / 12k */
+#define VEXT_DIVIDER_FACTOR     9.333f  /* (100k + 12k) / 12k */
+#define VEXT_SAMPLES            5       /* campioni per la media mobile */
+#define VEXT_LOW_CYCLES         3       /* cicli consecutivi sotto soglia prima di agire */
 
 static const struct adc_dt_spec adc_vext =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
@@ -64,21 +66,6 @@ static const struct adc_dt_spec adc_vext =
 /* ============================================================================
  * Funzioni di utilita' interne
  * ============================================================================ */
-
-/**
- * @brief Verifica se il mittente e' autorizzato.
- *
- * Confronta il numero del mittente con i numeri autorizzati configurati
- * in NVS. Se il numero è presente tra quelli autorizzati, restituisce true.
- * Altrimenti, restituisce false.
- *
- * @param sender  Numero mittente da verificare.
- * @return true se il mittente è autorizzato, false altrimenti.
- */
-static bool is_authorized(const char *sender)
-{
-    return auth_is_authorized(sender);
-}
 
 /**
  * @brief Converte una stringa in maiuscolo in-place.
@@ -147,6 +134,23 @@ static float read_vext(void)
     return (float)val_mv / 1000.0f * VEXT_DIVIDER_FACTOR;
 }
 
+/* Lettura VEXT con media mobile su VEXT_SAMPLES campioni */
+static float read_vext_avg(void)
+{
+    float   sum   = 0.0f;
+    uint8_t valid = 0;
+
+    for (uint8_t i = 0; i < VEXT_SAMPLES; i++) {
+        float v = read_vext();
+        if (v > 0.0f) {
+            sum += v;
+            valid++;
+        }
+        k_msleep(10);  /* pausa tra campioni per stabilizzare il partitore */
+    }
+
+    return (valid > 0) ? (sum / valid) : -1.0f;
+}
 
 /* ============================================================================
  * Handler comandi SMS
@@ -389,7 +393,7 @@ static void on_sms_received(const sms_message_t *msg)
     LOG_INF("SMS ricevuto da [%s]: [%s]", msg->sender, msg->text);
 
     /* --- Controllo autorizzazione --- */
-    if (!is_authorized(msg->sender)) {
+    if (!auth_is_authorized(msg->sender)) {
         LOG_WRN("Mittente non autorizzato: %s - SMS ignorato", msg->sender);
         return;
     }
@@ -427,18 +431,24 @@ static void on_sms_received(const sms_message_t *msg)
             return;
         }
     }
-
+    
+    /*******************************************************************************************************/
     /* --- Dispatch comandi --- */
+    /*******************************************************************************************************/
 
-    /* STOP */
+    /*******************************************************************************************************/
+    /* STOP              */
+
     if (strcmp(t, "STOP") == 0) {
         sequence_stop(msg->sender);
         return;
     }
 
-    /* START POMPA */
+    /*******************************************************************************************************/
+    /* START POMPA                      */
+
     if (strcmp(t, "START POMPA") == 0) {
-    sequence_state_t st = sequence_get_state();
+        sequence_state_t st = sequence_get_state();
 
         if (st == SEQ_IDLE) {
             if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
@@ -457,29 +467,34 @@ static void on_sms_received(const sms_message_t *msg)
                 sequence_start_pompa(msg->sender);
             }
         } else if (st == SEQ_GEN_OK) {
+            /* Generatore già acceso -> aggancia pompa */
             int ret = sequence_attach_pompa(msg->sender);
             if (ret == 0) {
                 if (REPLY_ENABLED) sms_send(msg->sender, "Pompa in aggancio...");
             }
         } else if (st == SEQ_POMPA_ON) {
+            /* Pompa già in funzione */
             if (REPLY_ENABLED) sms_send(msg->sender, "Pompa gia' in funzione.");
         } else {
-            if (REPLY_ENABLED) sms_send(msg->sender,
-                "Attendere accensione generatore.");
+            /* Accensione generatore in corso */
+            if (REPLY_ENABLED) sms_send(msg->sender, "Attendere accensione generatore.");
         }
         return;
     }
 
-    /* START */
+    /*******************************************************************************************************/
+    /* START                                                                                               */
+
     if (strcmp(t, "START") == 0) {
         sequence_state_t st = sequence_get_state();
 
         if (st != SEQ_IDLE) {
+            /* Altra sequenza già in corso */
             if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
         } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
-            if (REPLY_ENABLED) sms_send(msg->sender,
-                    "Avvio bloccato: generatore gia' acceso.\n"
-                    "Spegnere fisicamente prima di usare START.");
+            /* Generatore già acceso manualmente - blocca avvio sequenza */
+            if (REPLY_ENABLED) sms_send(msg->sender, "ATTENZIONE!! Generatore gia' acceso manualmente!\n"
+                                                     "Spegnere fisicamente prima di usare START.");
         } else {
             if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore...");
             sequence_start(msg->sender);
@@ -487,17 +502,25 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    /*******************************************************************************************************/
+    /* CONFIG                                                                                              */
+
     if (strcmp(t, "CONFIG") == 0) {
         handle_config(msg->sender);
         return;
     }
+
+    /*******************************************************************************************************/
+    /* STATUS                                                                                              */
 
     if (strcmp(t, "STATUS") == 0) {
         handle_status(msg->sender);
         return;
     }
 
-    /* SET NUM1/2/3 */
+    /*******************************************************************************************************/
+    /* SET NUM1/2/3                                                                                        */
+
     if (strncmp(t, "SET NUM", 7) == 0) {
         uint8_t idx = t[7] - '0';
         if (idx >= 1 && idx <= 3) {
@@ -518,7 +541,9 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    /*******************************************************************************************************/
     /* SET NOTIFY */
+
     if (strncmp(t, "SET NOTIFY ", 11) == 0) {
         uint8_t idx = t[11] - '0';
         int ret = auth_set_notify(idx);
@@ -534,24 +559,30 @@ static void on_sms_received(const sms_message_t *msg)
         return;
     }
 
+    /*******************************************************************************************************/
+    /* SET               */
+  
     if (strncmp(t, "SET ", 4) == 0) {
         handle_set(msg->sender, t);
         return;
     }
+    /*******************************************************************************************************/
+    /* AUTOSTART ON/OFF                                      */
 
     if (strcmp(t, "AUTOSTART ON") == 0) {
        sequence_set_autostart(true);
         if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: ON (salvato)");
         return;
     }
-
     if (strcmp(t, "AUTOSTART OFF") == 0) {
         sequence_set_autostart(false);
         if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: OFF (salvato)");
         return;
     }
 
-    /* Comando non riconosciuto */
+    /*******************************************************************************************************/
+    /* Comando non riconosciuto                      */
+
     LOG_WRN("Comando non riconosciuto: [%s]", t);
     if (REPLY_ENABLED) {
         sms_send(msg->sender,
@@ -564,6 +595,23 @@ static void on_sms_received(const sms_message_t *msg)
          "SET T1/T2/T3/T4 <sec>\n"
          "SET T5/T6 <min>\n"
          "SET S1 <V*10>");
+    }
+}
+
+static void led_blink(uint8_t count)
+{
+    /* Ogni blink = 150ms ON + 150ms OFF = 300ms */
+    for (uint8_t i = 0; i < count; i++) {
+        gpio_ctrl_led_set(false);
+        k_msleep(150);
+        gpio_ctrl_led_set(true);
+        k_msleep(150);
+    }
+
+    /* Pausa finale per arrivare a ~5 secondi totali */
+    uint32_t blink_time = count * 300U;
+    if (blink_time < 5000U) {
+        k_msleep(5000U - blink_time);
     }
 }
 
@@ -610,7 +658,7 @@ int main(void)
     }
 
     /* LED acceso durante l'inizializzazione come indicatore visivo */
-    gpio_ctrl_led_set(true);
+    gpio_ctrl_led_set(false);
 
     /* ------------------------------------------------------------------
      * 2. Accensione BG95-M3
@@ -698,7 +746,7 @@ int main(void)
     gpio_ctrl_exp_out_set(EXP_OUT_7, false);
 
     /* LED spento: sistema pronto */
-    gpio_ctrl_led_set(false);
+    gpio_ctrl_led_set(true);
     LOG_INF("Sistema pronto. Comandi: START | CONFIG | SET T1/T2/T3 <sec>");
 
     /* ------------------------------------------------------------------
@@ -765,45 +813,77 @@ int main(void)
         // LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
 
         // Legge la tensione esterna (VEXT) tramite ADC e la logga.
-        float vext = read_vext();
+        /* Lettura VEXT con media mobile */
+        float vext = read_vext_avg();
         LOG_INF("VEXT: %.2f V", (double)vext);
 
-        /* Controllo VEXT per avvio automatico */
-        if (vext > 0.0f) 
-        {
-            if(vext < sequence_get_params()->s1_v)
-            {
-                if (sequence_get_state() == SEQ_IDLE && sequence_get_params()->autostart) {  // VEXT sotto soglia e autostart abilitato
-                    
-                    snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - AUTOSTART ON - avvio automatico generatore!", 
-                                (double)vext);
-                    
-                    LOG_WRN("%s", msg);
-                    sms_send(auth_get_notify_number(), msg);
-                            
-                    sequence_start(auth_get_notify_number());
-                }
-                else if (sequence_get_state() == SEQ_IDLE && !sequence_get_params()->autostart){ // VEXT sotto soglia ma autostart disabilitato
-                    if (sms_sended == false || vext < next_sms) {
-                        
-                        sms_sended = true;
-                        next_sms = vext - delta_vext;
-                        
-                        snprintf(msg, sizeof(msg), "ATTENZIONE: Batteria bassa (%.2f) - avvio automatico disabilitato!\nProssimo SMS a %.2f V.", 
-                                (double)vext, (double)next_sms);
+        /* ----------------------------------------------------------------
+         * Controllo VEXT per avvio automatico o avviso batteria bassa.
+         *
+         * vext_low_count: incrementato ad ogni ciclo in cui VEXT < S1,
+         * azzerato non appena VEXT torna sopra soglia.
+         * L'azione (autostart o SMS) viene eseguita solo quando il
+         * contatore raggiunge VEXT_LOW_CYCLES.
+         * ---------------------------------------------------------------- */
+        static uint8_t vext_low_count = 0;
 
+        if (vext > 0.0f) {
+            if (vext < sequence_get_params()->s1_v) {
+
+                vext_low_count++;
+                LOG_WRN("VEXT bassa (%.2f V) - ciclo %u/%u",
+                        (double)vext, vext_low_count, VEXT_LOW_CYCLES);
+
+                if (vext_low_count >= VEXT_LOW_CYCLES) {
+
+                    if (sequence_get_state() == SEQ_IDLE &&
+                        sequence_get_params()->autostart) {
+                        /* VEXT bassa confermata + autostart abilitato
+                         * → avvio automatico generatore */
+                        snprintf(msg, sizeof(msg),
+                                 "ATTENZIONE: Batteria bassa (%.2fV) - "
+                                 "avvio automatico generatore!",
+                                 (double)vext);
                         LOG_WRN("%s", msg);
-                        sms_send(auth_get_notify_number(), msg);                        
+                        sms_send(auth_get_notify_number(), msg);
+                        sequence_start(auth_get_notify_number());
+
+                        /* Reset contatore - evita avvii multipli */
+                        vext_low_count = 0;
+
+                    } else if (sequence_get_state() == SEQ_IDLE &&
+                               !sequence_get_params()->autostart) {
+                        /* VEXT bassa confermata + autostart disabilitato
+                         * → SMS di avviso (con soglia progressiva) */
+                        if (!sms_sended || vext < next_sms) {
+                            sms_sended = true;
+                            next_sms   = vext - delta_vext;
+                            snprintf(msg, sizeof(msg),
+                                     "ATTENZIONE: Batteria bassa (%.2fV)!\n"
+                                     "Autostart disabilitato.\n"
+                                     "Prossimo SMS a %.2fV.",
+                                     (double)vext, (double)next_sms);
+                            LOG_WRN("%s", msg);
+                            sms_send(auth_get_notify_number(), msg);
+                        } else {
+                            LOG_WRN("Batteria bassa (%.2fV) - "
+                                    "SMS non inviato, prossimo a %.2fV",
+                                    (double)vext, (double)next_sms);
+                        }
                     }
-                    else {
-                        LOG_WRN("Batteria bassa (%.2f V - SMS NON INVIATO!! - prossimo sms %.2f V)",
-                            (double)vext, (double)next_sms);
-                    }
+                    /* Se SEQ non IDLE (generatore gia' in corso)
+                     * non fare nulla - il generatore sta gia' caricando */
                 }
-            }
-            else {
-                sms_sended = false;
-                next_sms = sequence_get_params()->s1_v;
+
+            } else {
+                /* VEXT sopra soglia - reset contatori e flag */
+                if (vext_low_count > 0) {
+                    LOG_INF("VEXT tornata sopra soglia (%.2fV) - reset contatore",
+                            (double)vext);
+                }
+                vext_low_count = 0;
+                sms_sended     = false;
+                next_sms       = sequence_get_params()->s1_v;
             }
         }
 
@@ -830,11 +910,28 @@ int main(void)
             gpio_ctrl_exp_out_get(EXP_OUT_7));
         }
         
-        /* Heartbeat LED: impulso breve ogni 5 secondi */
-        gpio_ctrl_led_set(true);
-        k_msleep(100);
-        gpio_ctrl_led_set(false);
-        k_msleep(4900);
+        /* Blink LED in base allo stato */
+        sequence_state_t st = sequence_get_state();
+        
+        if (st == SEQ_IDLE && gpio_ctrl_exp_out_get(EXP_OUT_0) == 0 && gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
+            /* Generatore acceso manualmente - 6 lampeggi */
+            led_blink(6);
+        } else if (st == SEQ_POMPA_ON) {
+            /* Pompa accesa - 5 lampeggi */
+            led_blink(5);
+        } else if (st == SEQ_GEN_OK) {
+            /* Generatore acceso - 4 lampeggi */
+            led_blink(4);
+        } else if (st == SEQ_RUNNING) {
+            /* Ciclo in esecuzione - 3 lampeggi */
+            led_blink(3);
+        } else if (vext > 0 && vext < sequence_get_params()->s1_v) {
+            /* Batteria sotto soglia - 2 lampeggi */
+            led_blink(2);
+        } else {
+            /* Stato normale - 1 lampeggio */
+            led_blink(1);
+        }
 
         // Legge data e ora attuali dal modem
         //uint8_t h, m, s, d, mo;
