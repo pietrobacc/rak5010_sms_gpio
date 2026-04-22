@@ -28,6 +28,7 @@
 #include <hal/nrf_power.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #include "gpio_ctrl.h"
 #include "modem.h"
 #include "sms.h"
@@ -146,10 +147,15 @@ static float read_vext_avg(void)
             sum += v;
             valid++;
         }
+        //LOG_INF("VEXT : %.2f V", (double)v);
         k_msleep(10);  /* pausa tra campioni per stabilizzare il partitore */
     }
 
-    return (valid > 0) ? (sum / valid) : -1.0f;
+    if (valid == 0) return -1.0f;
+
+    /* Arrotondamento al decimo di volt */
+    float avg = sum / valid;
+    return roundf(avg * 10.0f) / 10.0f;
 }
 
 /* ============================================================================
@@ -253,12 +259,12 @@ static void handle_status(const char *sender)
              (pom_uptime % 3600) / 60);
     }
 
-    float vext = read_vext();           // Legge la tensione esterna tramite ADC
+    float vext = read_vext_avg();           // Legge la tensione esterna tramite ADC
 
     snprintf(msg, sizeof(msg),
             "Temp: %.1f'C\n"
             "Umidita: %.1f%%\n"
-            "VBATT: %.2fV\n"
+            "VBATT: %.1fV\n"
             "VCC: %.2fV\n"
             "Segnale: %s\n"
             "Gen: %s\n"
@@ -815,7 +821,7 @@ int main(void)
         // Legge la tensione esterna (VEXT) tramite ADC e la logga.
         /* Lettura VEXT con media mobile */
         float vext = read_vext_avg();
-        LOG_INF("VEXT: %.2f V", (double)vext);
+        LOG_INF("VEXT: %.1f V", (double)vext);
 
         /* ----------------------------------------------------------------
          * Controllo VEXT per avvio automatico o avviso batteria bassa.
@@ -831,7 +837,7 @@ int main(void)
             if (vext < sequence_get_params()->s1_v) {
 
                 vext_low_count++;
-                LOG_WRN("VEXT bassa (%.2f V) - ciclo %u/%u",
+                LOG_WRN("VEXT bassa (%.1f V) - ciclo %u/%u",
                         (double)vext, vext_low_count, VEXT_LOW_CYCLES);
 
                 if (vext_low_count >= VEXT_LOW_CYCLES) {
@@ -841,7 +847,7 @@ int main(void)
                         /* VEXT bassa confermata + autostart abilitato
                          * → avvio automatico generatore */
                         snprintf(msg, sizeof(msg),
-                                 "ATTENZIONE: Batteria bassa (%.2fV) - "
+                                 "ATTENZIONE: Batteria bassa (%.1fV) - "
                                  "avvio automatico generatore!",
                                  (double)vext);
                         LOG_WRN("%s", msg);
@@ -855,19 +861,19 @@ int main(void)
                                !sequence_get_params()->autostart) {
                         /* VEXT bassa confermata + autostart disabilitato
                          * → SMS di avviso (con soglia progressiva) */
-                        if (!sms_sended || vext < next_sms) {
+                        if (!sms_sended || vext <= next_sms) {
                             sms_sended = true;
                             next_sms   = vext - delta_vext;
                             snprintf(msg, sizeof(msg),
-                                     "ATTENZIONE: Batteria bassa (%.2fV)!\n"
+                                     "ATTENZIONE: Batteria bassa (%.1fV)!\n"
                                      "Autostart disabilitato.\n"
-                                     "Prossimo SMS a %.2fV.",
+                                     "Prossimo SMS a %.1fV.",
                                      (double)vext, (double)next_sms);
                             LOG_WRN("%s", msg);
                             sms_send(auth_get_notify_number(), msg);
                         } else {
-                            LOG_WRN("Batteria bassa (%.2fV) - "
-                                    "SMS non inviato, prossimo a %.2fV",
+                            LOG_WRN("Batteria bassa (%.1fV) - "
+                                    "SMS non inviato, prossimo a %.1fV",
                                     (double)vext, (double)next_sms);
                         }
                     }
@@ -878,7 +884,7 @@ int main(void)
             } else {
                 /* VEXT sopra soglia - reset contatori e flag */
                 if (vext_low_count > 0) {
-                    LOG_INF("VEXT tornata sopra soglia (%.2fV) - reset contatore",
+                    LOG_INF("VEXT tornata sopra soglia (%.1fV) - reset contatore",
                             (double)vext);
                 }
                 vext_low_count = 0;
