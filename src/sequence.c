@@ -142,17 +142,6 @@ static void spegni_generatore(void)
 }
 
 /* ============================================================================
- * Helper - spegnimento pompa
- * ============================================================================ */
-
-static void spegni_pompa(void)
-{
-    gpio_ctrl_exp_out_set(EXP_OUT_2, false);
-    pompa_on = false;
-    LOG_INF("SEQ: OUT2 OFF - pompa spenta");
-}
-
-/* ============================================================================
  * Helper - accensione generatore
  * Comune a START e START POMPA.
  *
