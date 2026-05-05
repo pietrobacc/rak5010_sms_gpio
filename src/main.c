@@ -42,6 +42,13 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 static uint32_t g_reset_reason = 0;      // Variabile globale per memorizzare la causa del reset
 static const struct device *shtc3_dev;   // Device SHTC3 per lettura temperatura e umidità
 
+// Variabili per monitorare stato della macchina
+// static bool GEN_ON_MANUAL = false;      // generatore acceso manualmente (IN0=1 e OUT0=0) - blocca START normale, permette solo START POMPA
+// static bool GEN_ON_AUTO   = false;      // generatore acceso da sequenza (OUT0=1 e IN0=1) - permette START POMPA e STOP
+// static bool POMPA_ON      = false;      // pompa in funzione (OUT2=1) - permette solo STOP
+// static bool TANK_FULL     = false;      // serbatoio pieno (IN1=1) - blocca START POMPA
+// static bool SEQ_ACTIVE    = false;      // sequenza attiva (SEQ non IDLE, GEN_ON_AUTO o POMPA_ON) - permette solo STOP
+
 /* ============================================================================
  * Configurazione utente
  * Modificare questi valori prima della compilazione.
