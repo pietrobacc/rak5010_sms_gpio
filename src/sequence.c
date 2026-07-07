@@ -270,7 +270,7 @@ static void seq_work_handler(struct k_work *work)
     switch (result) {
     case GEN_FAIL:
         spegni_tutto();
-        sms_send(reply_to, "Accensione FALLITA - nessun feedback su IN0");
+        sms_send(reply_to, "Accensione FALLITA - nessun feedback dal generatore");
         state = SEQ_IDLE;
         return;
     case GEN_STOP:
@@ -385,7 +385,7 @@ static void seq_pompa_handler(struct k_work *work)
         switch (result) {
         case GEN_FAIL:
             spegni_tutto();
-            sms_send(reply_to, "Accensione FALLITA - nessun feedback su IN0");
+            sms_send(reply_to, "Accensione FALLITA - nessun feedback dal generatore");
             state = SEQ_IDLE;
             return;
         case GEN_STOP:
