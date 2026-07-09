@@ -352,7 +352,7 @@ static void seq_work_handler(struct k_work *work)
 
         switch (trigger) {
         case 0: sms_send(reply_to, "Generatore e pompa spenti - Timeout T6"); break;
-        case 1: sms_send(reply_to, "Generatore e pompa spenti - Troppo pieno rilevato"); break;
+        case 1: sms_send(reply_to, "Generatore e pompa spenti - Rilevato serbatoio vuoto"); break;
         case 2: sms_send(reply_to, "Generatore e pompa spenti - STOP ricevuto"); break;
         default: sms_send(reply_to, "Generatore e pompa spenti"); break;
         }
@@ -437,7 +437,7 @@ static void seq_pompa_handler(struct k_work *work)
             spegni_generatore();
         }
         sms_send(reply_to, "Pompa non avviata!\n"
-                           "Serbatoio gia' pieno.");
+                           "Serbatoio vuoto.");
         state = SEQ_IDLE;
         return;
     }
