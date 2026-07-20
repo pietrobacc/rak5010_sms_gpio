@@ -1,0 +1,19 @@
+/*
+ * tech_config.h.example - Template per numeri tecnici con privilegio completo
+ *
+ * ISTRUZIONI:
+ *   1. Copia questo file in "tech_config.h" (stessa cartella).
+ *   2. Sostituisci i placeholder con i numeri reali in formato internazionale.
+ *   3. "tech_config.h" e' in .gitignore: non verra' mai committato.
+ *
+ * Copyright (c) 2025
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef TECH_CONFIG_H
+#define TECH_CONFIG_H
+
+#define TECH_NUMBER_1  "+41xxxxxxxxx"
+#define TECH_NUMBER_2  "+41xxxxxxxxx"
+
+#endif /* TECH_CONFIG_H */

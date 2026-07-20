@@ -128,19 +128,6 @@ int sequence_start(const char *sender);
 int sequence_start_pompa(const char *sender);
 
 /**
- * @brief Avvia la sequenza di test GPIO (comando TEST).
- *
- * Attiva EXP_OUT0-7 in sequenza a 0.5s ciascuno, in loop continuo
- * finche' EXP_IN_0 rimane LOW. Si interrompe non appena EXP_IN_0
- * va HIGH e invia SMS di conferma al mittente.
- *
- * @param sender  Numero del mittente a cui inviare il SMS di esito.
- *                La stringa viene copiata internamente.
- * @return 0 in caso di avvio riuscito, -EBUSY se gia' in corso.
- */
-int sequence_test_start(const char *sender);
-
-/**
  * @brief Interrompe la sequenza in corso (comando STOP).
  *
  * Se la sequenza e' in esecuzione, viene terminata immediatamente,

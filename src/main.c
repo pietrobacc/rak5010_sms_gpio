@@ -42,13 +42,6 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 static uint32_t g_reset_reason = 0;      // Variabile globale per memorizzare la causa del reset
 static const struct device *shtc3_dev;   // Device SHTC3 per lettura temperatura e umidità
 
-// Variabili per monitorare stato della macchina
-// static bool GEN_ON_MANUAL = false;      // generatore acceso manualmente (IN0=1 e OUT0=0) - blocca START normale, permette solo START POMPA
-// static bool GEN_ON_AUTO   = false;      // generatore acceso da sequenza (OUT0=1 e IN0=1) - permette START POMPA e STOP
-// static bool POMPA_ON      = false;      // pompa in funzione (OUT2=1) - permette solo STOP
-// static bool TANK_FULL     = false;      // serbatoio pieno (IN1=1) - blocca START POMPA
-// static bool SEQ_ACTIVE    = false;      // sequenza attiva (SEQ non IDLE, GEN_ON_AUTO o POMPA_ON) - permette solo STOP
-
 /* ============================================================================
  * Configurazione utente
  * Modificare questi valori prima della compilazione.
@@ -183,15 +176,6 @@ static void handle_config(const char *sender)
     const sequence_params_t *p = sequence_get_params();
     char msg[256];
     
-    //float temp, hum;
-    //read_sensor(&temp, &hum);
-
-    //uint8_t bat_pct;
-    //uint16_t bat_mv;
-    //modem_get_battery(&bat_pct, &bat_mv);
-
-    //float vext = read_vext();
-
     snprintf(msg, sizeof(msg),
              "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
              "T4 = %u s\nT5 = %u min\nT6 = %u min\n"
@@ -238,10 +222,11 @@ static void handle_status(const char *sender)
     uint16_t bat_mv;                    // Legge la tensione della batteria in mV dal modem
     modem_get_battery(&bat_pct, &bat_mv);
 
-    uint8_t rssi;               // Variabile per livello segnale RSSI   
-    int16_t dbm;                // Variabile per livello segnale in dBm (se disponibile)
+    uint8_t rssi;               // Variabile per livello segnale RSSI (non usato direttamente qui)
+    int16_t dbm;                // Variabile per livello segnale in dBm
+
     char signal_str[20] = "N/A";
-    if (modem_get_signal(&rssi, &dbm) == 0 && rssi != 99) {
+    if (modem_get_signal(&rssi, &dbm) == 0) {
         snprintf(signal_str, sizeof(signal_str), "%d dBm", dbm);
     }
 
@@ -811,20 +796,6 @@ int main(void)
         // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
         sms_poll();
 
-        // Legge lo stato della batteria del modem (VBAT) e lo logga.
-        // uint8_t bat_pct;
-        // uint16_t bat_mv;
-        // if (modem_get_battery(&bat_pct, &bat_mv) == 0) {
-        //     LOG_INF("VBAT: %u mV  %u %%", bat_mv, bat_pct);
-        // } else {
-        //     LOG_WRN("VBAT: lettura fallita");
-        // }
-
-        // Legge temperatura e umidità dal sensore SHTC3 e li logga.
-        // float temp, hum;
-        // read_sensor(&temp, &hum);
-        // LOG_INF("Temperatura: %.1f C  Umidita: %.1f %%", (double)temp, (double)hum);
-
         // Legge la tensione esterna (VEXT) tramite ADC e la logga.
         /* Lettura VEXT con media mobile */
         float vext = read_vext_avg();
@@ -945,13 +916,6 @@ int main(void)
             /* Stato normale - 1 lampeggio */
             led_blink(1);
         }
-
-        // Legge data e ora attuali dal modem
-        //uint8_t h, m, s, d, mo;
-        //uint16_t y;
-        //modem_get_time(&h, &m, &s, &d, &mo, &y);
-        //LOG_INF("---- %02u/%02u/%u %02u:%02u:%02u      Fine ciclo      ----", 
-        //        d, mo, y, h, m, s);
 
         /* Alimenta il watchdog - prova che il loop è vivo */
         app_wdt_feed();

@@ -1,7 +1,8 @@
 # RAK5010-M + BG95-M3 — SMS → GPIO Controller
 
-Firmware Zephyr per **nRF Connect SDK v3.2.3** che riceve comandi via SMS
-e attiva/disattiva i GPIO del RAK5010-M.
+Firmware Zephyr per **nRF Connect SDK v3.2.3** che gestisce l'accensione
+di un generatore e di una pompa tramite comandi SMS, con feedback GPIO
+tramite espansore MCP23017 e monitoraggio di batteria/sensori ambientali.
 
 ---
 
@@ -9,52 +10,40 @@ e attiva/disattiva i GPIO del RAK5010-M.
 
 ```
 rak5010_sms_gpio/
-├── CMakeLists.txt       — definizione target e sorgenti
-├── prj.conf             — Kconfig (driver abilitati)
-├── app.overlay          — device tree (pin reali RAK5010-M)
+├── CMakeLists.txt          — definizione target e sorgenti
+├── prj.conf                — Kconfig (driver abilitati)
+├── app.overlay             — device tree (pin reali RAK5010-M)
 └── src/
-    ├── main.c           — loop principale + tabella comandi SMS
-    ├── gpio_ctrl.c/h    — gestione LED, PWRKEY, output utente
-    ├── modem.c/h        — comunicazione AT via UART0
-    └── sms.c/h          — invio/ricezione/parsing SMS
+    ├── main.c               — loop principale + dispatcher comandi SMS
+    ├── gpio_ctrl.c/h        — LED, PWRKEY BG95, output/input MCP23017
+    ├── modem.c/h            — comunicazione AT via UART0
+    ├── sms.c/h              — invio/ricezione/parsing SMS
+    ├── sequence.c/h         — macchina a stati sequenza generatore/pompa
+    ├── auth.c/h             — numeri autorizzati e privilegi
+    ├── wdt.c/h              — watchdog hardware
+    └── tech_config.h        — numeri tecnici (NON committato, vedi sotto)
 ```
-
----
-
-## Pin mapping RAK5010-M (BG95-M3)
-
-| Segnale        | Pin nRF52840 | Direzione  |
-|----------------|-------------|------------|
-| UART0 TX→BG95  | P0.15       | Output     |
-| UART0 RX←BG95  | P0.13       | Input      |
-| BG95 PWRKEY    | P0.02       | Output     |
-| BG95 RESET     | P0.28       | Output     |
-| BG95 DTR       | P0.26       | Output     |
-| LED verde      | P0.12       | Output     |
-| Output 1       | P0.19       | Output     |
-| Output 2       | P0.20       | Output     |
-| Output 3       | P1.02       | Output     |
-| Output 4       | P1.01       | Output     |
 
 ---
 
 ## Configurazione prima della compilazione
 
-Modifica in `src/main.c`:
+### Numeri tecnici (privilegio completo)
 
-```c
-// Numero autorizzato (lascia "" per accettare tutti)
-#define AUTHORIZED_NUMBER   "+39XXXXXXXXXX"
+I numeri con privilegio "tech" (accesso a tutti i comandi, incluso `SET`
+e `AUTOSTART`) **non sono nel codice sorgente** per motivi di privacy.
 
-// Abilita/disabilita risposta SMS di conferma
-#define REPLY_ENABLED       true
+```bash
+cp src/tech_config.h.example src/tech_config.h
 ```
 
-L'APN Swisscom è già configurato in `src/modem.c`:
+Poi modifica `src/tech_config.h` inserendo i numeri reali in formato
+internazionale. Questo file è in `.gitignore` e non verrà mai committato.
 
-```c
-modem_send_at("AT+CGDCONT=1,\"IP\",\"gprs.swisscom.ch\"", ...);
-```
+### Altri parametri
+
+- `REPLY_ENABLED` in `src/main.c`: abilita/disabilita le risposte SMS.
+- APN Swisscom già configurato in `src/modem.c` (`AT+CGDCONT`).
 
 ---
 
@@ -72,7 +61,6 @@ modem_send_at("AT+CGDCONT=1,\"IP\",\"gprs.swisscom.ch\"", ...);
 
 ### Tramite terminale
 ```bash
-# Dalla cartella del progetto
 west build -b rak5010/nrf52840 .
 west flash --softreset
 
@@ -86,33 +74,41 @@ screen /dev/ttyACM0 115200
 
 ## Comandi SMS supportati
 
-Invia un SMS al numero della SIM inserita nel RAK5010:
+### Numeri cliente (numeri configurati in NUM1/2/3)
 
-| Testo SMS    | Effetto                          |
-|--------------|----------------------------------|
-| `OUT1 ON`    | Attiva Output 1 (P0.19) → HIGH   |
-| `OUT1 OFF`   | Disattiva Output 1 → LOW         |
-| `OUT2 ON`    | Attiva Output 2 (P0.20) → HIGH   |
-| `OUT2 OFF`   | Disattiva Output 2 → LOW         |
-| `OUT3 ON`    | Attiva Output 3 (P1.02) → HIGH   |
-| `OUT3 OFF`   | Disattiva Output 3 → LOW         |
-| `OUT4 ON`    | Attiva Output 4 (P1.01) → HIGH   |
-| `OUT4 OFF`   | Disattiva Output 4 → LOW         |
-| `ALL ON`     | Attiva tutti gli output           |
-| `ALL OFF`    | Disattiva tutti gli output        |
-| `STATUS`     | Risponde con lo stato di tutti    |
+| Comando        | Effetto                                             |
+|----------------|------------------------------------------------------|
+| `START`        | Avvia il generatore                                  |
+| `START POMPA`  | Avvia generatore + pompa (o solo pompa se già acceso) |
+| `STOP`         | Interrompe la sequenza in corso, spegne tutto        |
+| `STATUS`       | Risponde con temperatura, batteria, segnale, stato   |
 
-I comandi sono **case-insensitive** (es. `out1 on` = `OUT1 ON`).
+### Numeri tecnici (privilegio completo, in aggiunta ai precedenti)
+
+| Comando                 | Effetto                                             |
+|---------------------------|--------------------------------------------------|
+| `CONFIG`                 | Risponde con i parametri T1-T6, S1 e autostart      |
+| `SET T1/T2/T3/T4 <sec>`  | Imposta un timer in secondi (1-300) e salva in NVS  |
+| `SET T5/T6 <min>`        | Imposta un timer in minuti (0-1440) e salva in NVS  |
+| `SET S1 <V*10>`          | Soglia batteria bassa, es. `SET S1 125` = 12.5 V    |
+| `SET NUM1/2/3 <numero>`  | Imposta/cancella un numero cliente                  |
+| `SET NOTIFY <1-3>`       | Sceglie quale NUMx riceve le notifiche automatiche  |
+| `AUTOSTART ON/OFF`       | Abilita/disabilita avvio automatico su batteria bassa |
+
+I comandi sono **case-insensitive** (es. `start` = `START`).
 
 ---
 
 ## Comportamento LED verde
 
-| Stato LED          | Significato                    |
-|--------------------|--------------------------------|
-| Acceso fisso       | Inizializzazione in corso      |
-| Spento             | Sistema pronto                 |
-| Lampeggio 100 ms   | Ciclo polling attivo (ogni 5s) |
+| Stato                          | Lampeggi ogni ciclo (5s) |
+|---------------------------------|--------------------------|
+| Generatore acceso manualmente   | 6                        |
+| Pompa accesa                    | 5                        |
+| Generatore acceso (SEQ_GEN_OK)  | 4                        |
+| Sequenza in esecuzione          | 3                        |
+| Batteria sotto soglia S1        | 2                        |
+| Normale / idle                  | 1                        |
 
 ---
 
@@ -123,5 +119,6 @@ I comandi sono **case-insensitive** (es. `out1 on` = `OUT1 ON`).
 - I GPIO del RAK5010-M lavorano a **1.8 V** — usa buffer/level shifter
   se devi pilotare carichi a 3.3 V o 5 V.
 - La SIM deve supportare SMS (non solo dati).
-- Il polling SMS avviene ogni **5 secondi**. Per reattività immediata
-  è possibile estendere il codice con interrupt UART sui URC +CMTI.
+- Il polling SMS avviene ogni **5 secondi** nel loop principale.
+- Un watchdog hardware (30s) resetta il sistema in caso di blocco;
+  al riavvio viene inviato un SMS di allerta al numero di notifica.

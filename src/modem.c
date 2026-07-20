@@ -287,6 +287,13 @@ int modem_get_signal(uint8_t *rssi, int16_t *dbm)
     }
 
     if (rssi) *rssi = r;
-    if (dbm)  *dbm  = (r == 99) ? 0 : (-113 + (r * 2));
+    
+    if (r == 99) {
+        /* 99 = segnale sconosciuto/non rilevabile - dbm non significativo */
+        if (dbm) *dbm = 0;
+        return -ENODATA;
+    }
+
+    if (dbm) *dbm = -113 + (r * 2);
     return 0;
 }

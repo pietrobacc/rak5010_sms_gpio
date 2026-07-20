@@ -54,7 +54,7 @@ static sequence_params_t params = {
     .autostart = false,
 };
 
-static sequence_state_t state = SEQ_IDLE;
+static volatile sequence_state_t state = SEQ_IDLE;
 static char reply_to[24];
 static volatile bool stop_requested = false;
 
@@ -170,12 +170,6 @@ static gen_result_t generatore_accendi(void)
 
     /* Step 1: OUT0 ON + attesa T1 */
     gpio_ctrl_exp_out_set(EXP_OUT_0, true);
-    
-    // Tolto tiraggio aria per generatore diesel (non serve)
-    //k_msleep(500);  /* breve delay prima di tirare l'aria */
-    //gpio_ctrl_exp_out_set(EXP_OUT_3, true);
-    //LOG_INF("SEQ: OUT3 ON - tiro aria"); 
-
     LOG_INF("SEQ: OUT0 ON - attesa T1 (%u s)", params.t1_ms / 1000);
     for (uint32_t i = 0; i < params.t1_ms; i += 100) {
         if (stop_requested) goto gen_stop;
@@ -193,11 +187,6 @@ static gen_result_t generatore_accendi(void)
     /* Step 3: OUT1 OFF */
     gpio_ctrl_exp_out_set(EXP_OUT_1, false);
     LOG_INF("SEQ: OUT1 OFF - polling IN0 (max %u s)", params.t3_ms / 1000);
-
-    // Tolto rilascio aria per generatore diesel (non serve)    
-    //k_msleep(500);  /* breve delay prima di lasciare l'aria */
-    //gpio_ctrl_exp_out_set(EXP_OUT_3, false);
-    //LOG_INF("SEQ: OUT3 OFF - rilascio aria");
 
     /* Step 4: polling IN0 ogni 50ms fino a T3 */
     for (uint32_t elapsed = 0; elapsed < params.t3_ms; elapsed += 50) {

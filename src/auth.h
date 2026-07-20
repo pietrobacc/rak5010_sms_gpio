@@ -14,9 +14,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/** Numeri tecnici fissi - modificare prima della compilazione */
-#define TECH_NUMBER_1  "+41792793879"   // Ciocio
-#define TECH_NUMBER_2  "+41798904050"   // Bacc
+/*
+* Numeri tecnici fissi (privilegio completo: SET, AUTOSTART, ecc.)
+*
+* Definiti in "tech_config.h", file NON tracciato da Git (vedi .gitignore).
+* Prima di compilare, copia "tech_config.h.example" in "tech_config.h"
+* e inserisci i numeri reali.
+*/
+#include "tech_config.h"
 
 /**
  * @brief Inizializza il modulo auth, carica i numeri da NVS.
