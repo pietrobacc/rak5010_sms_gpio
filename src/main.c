@@ -433,7 +433,11 @@ static void on_sms_received(const sms_message_t *msg)
         if (st == SEQ_IDLE) {
             if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
                 /* Serbatoio già vuoto - pompa non può aspirare a vuoto */
-                sms_send(msg->sender, REPLY_POMPA_BLOCCATA_VUOTO);
+                if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_VUOTO);
+
+            } else if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+                /* Serbatoio di riempimento già pieno - pompa non va avviata */
+                if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_TROPPOPIENO);
 
             } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1 &&
                     !sequence_generatore_is_on(NULL)) {

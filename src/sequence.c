@@ -211,12 +211,12 @@ gen_stop:
 }
 
 /* ============================================================================
- * Helper - attesa spegnimento con 3 trigger
- * Usato sia da START (solo T5+STOP) che da START POMPA (T6+IN1+STOP)
+ * Helper - attesa spegnimento con 4 trigger
+ * Usato sia da START (solo T5+STOP) che da START POMPA (T6+IN1+IN2+STOP)
  *
  * @param timeout_min  Timeout in minuti (0 = infinito)
- * @param check_in1    true = controlla anche EXP_IN_1
- * @return motivo dello stop: 0=timeout, 1=IN1, 2=STOP
+ * @param check_in1    true = controlla anche EXP_IN_1 (vuoto) e EXP_IN_2 (troppo-pieno)
+ * @return motivo dello stop: 0=timeout, 1=IN1 (vuoto), 2=STOP, 3=IN2 (troppo-pieno)
  * ============================================================================ */
 
 static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
@@ -224,7 +224,7 @@ static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
     uint32_t elapsed = 0;
     uint32_t timeout_ms = timeout_min * 60000U;
 
-    LOG_INF("SEQ: attesa spegnimento - timeout=%umin IN1=%s",
+    LOG_INF("SEQ: attesa spegnimento - timeout=%umin IN1/IN2=%s",
             timeout_min, check_in1 ? "SI" : "NO");
 
     while (1) {
@@ -233,8 +233,12 @@ static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
             return 2;
         }
         if (check_in1 && gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
-            LOG_INF("SEQ: trigger IN1 HIGH dopo %u s", elapsed / 1000);
+            LOG_INF("SEQ: trigger IN1 HIGH (serbatoio vuoto) dopo %u s", elapsed / 1000);
             return 1;
+        }
+        if (check_in1 && gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+            LOG_INF("SEQ: trigger IN2 HIGH (troppo-pieno) dopo %u s", elapsed / 1000);
+            return 3;
         }
         if (timeout_ms > 0 && elapsed >= timeout_ms) {
             LOG_INF("SEQ: trigger timeout T=%umin", timeout_min);
@@ -294,11 +298,19 @@ static void seq_work_handler(struct k_work *work)
         if (stop_requested) break;
         if (attach_pompa_requested) {
             attach_pompa_requested = false;
-            strncpy(reply_to, attach_pompa_sender, sizeof(reply_to) - 1);
-            reply_to[sizeof(reply_to) - 1] = '\0';
-            do_pompa = true;
-            LOG_INF("SEQ: aggancio pompa accettato");
-            break;
+            if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
+                LOG_WRN("SEQ: aggancio pompa rifiutato - IN1 (serbatoio vuoto)");
+                sms_send(attach_pompa_sender, REPLY_POMPA_BLOCCATA_VUOTO);
+            } else if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+                LOG_WRN("SEQ: aggancio pompa rifiutato - IN2 (troppo-pieno)");
+                sms_send(attach_pompa_sender, REPLY_POMPA_BLOCCATA_TROPPOPIENO);
+            } else {
+                strncpy(reply_to, attach_pompa_sender, sizeof(reply_to) - 1);
+                reply_to[sizeof(reply_to) - 1] = '\0';
+                do_pompa = true;
+                LOG_INF("SEQ: aggancio pompa accettato");
+                break;
+            }
         }
         if (t5_ms > 0 && elapsed >= t5_ms) {
             LOG_INF("SEQ START: timeout T5 (%u min)", params.t5_min);
@@ -342,6 +354,7 @@ static void seq_work_handler(struct k_work *work)
         case 0: sms_send(reply_to, REPLY_GENPOMPA_TIMEOUT_T6); break;
         case 1: sms_send(reply_to, REPLY_GENPOMPA_VUOTO); break;
         case 2: sms_send(reply_to, REPLY_GENPOMPA_STOP); break;
+        case 3: sms_send(reply_to, REPLY_GENPOMPA_TROPPOPIENO); break;
         default: sms_send(reply_to, REPLY_GENPOMPA_DEFAULT); break;
         }
 
@@ -429,6 +442,17 @@ static void seq_pompa_handler(struct k_work *work)
         return;
     }
 
+    /* Sicurezza: verifica che il serbatoio di riempimento non sia già pieno (IN2) */
+    if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+        LOG_WRN("SEQ POMPA: IN2 già HIGH - troppo-pieno, pompa non avviata");
+        if (!manuale) {
+            spegni_generatore();
+        }
+        sms_send(reply_to, REPLY_POMPA_NON_AVVIATA_TROPPOPIENO);
+        state = SEQ_IDLE;
+        return;
+    }
+
     gpio_ctrl_exp_out_set(EXP_OUT_2, true);
     pompa_on      = true;
     pompa_on_time = k_uptime_get();
@@ -460,6 +484,11 @@ static void seq_pompa_handler(struct k_work *work)
         break;
     case 2:
         sms_send(reply_to, manuale ? REPLY_POMPA_STOP_RICHIESTO : REPLY_GENPOMPA_STOP_RICHIESTO);
+        break;
+    case 3:
+        sms_send(reply_to, manuale ?
+                 REPLY_POMPA_STOP_TROPPOPIENO :
+                 REPLY_GENPOMPA_STOP_TROPPOPIENO);
         break;
     default:
         sms_send(reply_to, manuale ? REPLY_POMPA_SPENTA_DEFAULT : REPLY_GENPOMPA_DEFAULT);

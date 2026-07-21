@@ -17,13 +17,16 @@
 /* ============================================================
  * Comandi cliente / help
  * ============================================================ */
-#define REPLY_CMD_LIST_CLIENTE \
+
+    /* Lista dei comandi disponibili per i numeri cliente (non tecnici) */
+ #define REPLY_CMD_LIST_CLIENTE \
     "Comandi disponibili:\n" \
     "START\n" \
     "START POMPA\n" \
     "STOP\n" \
     "STATUS"
 
+    /* Lista dei comandi disponibili per i numeri tecnici */
 #define REPLY_CMD_LIST_TECH \
     "START\n" \
     "START POMPA\n" \
@@ -35,15 +38,18 @@
     "SET T5/T6 <min>\n" \
     "SET S1 <V*10>"
 
+    /* Messaggio 1 di risposta 1 per CONFIG */
 #define REPLY_FMT_CONFIG_1 \
     "T1 = %u s\nT2 = %u s\nT3 = %u s\n" \
     "T4 = %u s\nT5 = %u min\nT6 = %u min\n" \
     "S1 = %.1f V\n" \
     "Autost: %s\n"
 
+    /* Messaggio 2 di risposta 1 per CONFIG */
 #define REPLY_FMT_CONFIG_2 \
     "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u"
 
+    /* Messaggio di risposta per STATUS */
 #define REPLY_FMT_STATUS \
     "Temp: %.1f'C\n" \
     "Umidita: %.1f%%\n" \
@@ -95,7 +101,7 @@
     "ATTENZIONE!! Generatore gia' acceso manualmente!\n" \
     "Spegnere fisicamente prima di usare START."
 
-#define REPLY_START_AVVIO          "Avvio generatore..."
+#define REPLY_START_AVVIO          "Avvio generatore...attendere."
 #define REPLY_GEN_FALLITO          "Accensione FALLITA - nessun feedback dal generatore"
 #define REPLY_GEN_STOP             "Generatore spento - STOP ricevuto"
 
@@ -109,11 +115,15 @@
 /* ============================================================
  * START POMPA
  *
- * IN1 = galleggiante di livello minimo: HIGH quando il serbatoio e'
- * VUOTO (la pompa non puo' aspirare a vuoto, quindi viene bloccata/
- * spenta). Un futuro ingresso IN2 gestira' il troppo-pieno.
+ * IN1 = galleggiante di livello minimo sul serbatoio di alimento:
+ *       HIGH quando il serbatoio e' VUOTO (la pompa non puo' aspirare
+ *       a vuoto, quindi viene bloccata/spenta).
+ * IN2 = galleggiante di troppo-pieno sul serbatoio di riempimento:
+ *       HIGH quando il serbatoio di destinazione e' pieno (pompa
+ *       spenta per evitare fuoriuscite).
  * ============================================================ */
-#define REPLY_POMPA_BLOCCATA_VUOTO   "Avvio pompa bloccato: serbatoio gia' vuoto!"
+#define REPLY_POMPA_BLOCCATA_VUOTO         "Avvio pompa bloccato: serbatoio di pescaggio vuoto!"
+#define REPLY_POMPA_BLOCCATA_TROPPOPIENO   "Avvio pompa bloccato: serbatoio di riempimento pieno!"
 #define REPLY_POMPA_GEN_GIA_ACCESO   "Generatore gia' acceso - avvio pompa..."
 #define REPLY_POMPA_AVVIO_GEN_POMPA  "Avvio generatore + pompa..."
 #define REPLY_POMPA_IN_AGGANCIO      "Pompa in aggancio..."
@@ -124,18 +134,25 @@
 
 #define REPLY_POMPA_NON_AVVIATA_VUOTO \
     "Pompa non avviata!\n" \
-    "Serbatoio vuoto."
+    "Serbatoio di pescaggio vuoto."
 
-#define REPLY_GENPOMPA_TIMEOUT_T6    "Generatore e pompa spenti - Timeout T6"
-#define REPLY_GENPOMPA_VUOTO         "Generatore e pompa spenti - Rilevato serbatoio vuoto"
-#define REPLY_GENPOMPA_STOP          "Generatore e pompa spenti - STOP ricevuto"
-#define REPLY_GENPOMPA_DEFAULT       "Generatore e pompa spenti"
+#define REPLY_POMPA_NON_AVVIATA_TROPPOPIENO \
+    "Pompa non avviata!\n" \
+    "Serbatoio di riempimento pieno."
 
-/* Spegnimento pompa già agganciata (dopo T6/IN1/STOP) */
-#define REPLY_POMPA_STOP_TIMEOUT_T6      "Pompa spenta - timeout T6"
-#define REPLY_GENPOMPA_STOP_TIMEOUT_T6   "Generatore e pompa spenti - timeout T6"
-#define REPLY_POMPA_STOP_VUOTO           "Pompa spenta - serbatoio vuoto"
-#define REPLY_GENPOMPA_STOP_VUOTO        "Generatore e pompa spenti - serbatoio vuoto"
+#define REPLY_GENPOMPA_TIMEOUT_T6      "Generatore e pompa spenti - Timeout T6"
+#define REPLY_GENPOMPA_VUOTO           "Generatore e pompa spenti - Rilevato serbatoio vuoto"
+#define REPLY_GENPOMPA_TROPPOPIENO     "Generatore e pompa spenti - Rilevato troppo-pieno"
+#define REPLY_GENPOMPA_STOP            "Generatore e pompa spenti - STOP ricevuto"
+#define REPLY_GENPOMPA_DEFAULT         "Generatore e pompa spenti"
+
+/* Spegnimento pompa già agganciata (dopo T6/IN1/IN2/STOP) */
+#define REPLY_POMPA_STOP_TIMEOUT_T6      "Pompa spenta - Timeout T6"
+#define REPLY_GENPOMPA_STOP_TIMEOUT_T6   "Generatore e pompa spenti - Timeout T6"
+#define REPLY_POMPA_STOP_VUOTO           "Pompa spenta - serbatoio di pescaggio vuoto"
+#define REPLY_GENPOMPA_STOP_VUOTO        "Generatore e pompa spenti - serbatoio di pescaggio vuoto"
+#define REPLY_POMPA_STOP_TROPPOPIENO     "Pompa spenta - troppo-pieno"
+#define REPLY_GENPOMPA_STOP_TROPPOPIENO  "Generatore e pompa spenti - troppo-pieno"
 #define REPLY_POMPA_STOP_RICHIESTO       "Pompa spenta - STOP ricevuto"
 #define REPLY_GENPOMPA_STOP_RICHIESTO    "Generatore e pompa spenti - STOP ricevuto"
 #define REPLY_POMPA_SPENTA_DEFAULT       "Pompa spenta"
@@ -143,7 +160,7 @@
 /* ============================================================
  * STOP diretto (nessuna sequenza attiva)
  * ============================================================ */
-#define REPLY_STOP_NESSUNA_SEQUENZA  "Output spenti (nessuna sequenza in corso)"
+#define REPLY_STOP_NESSUNA_SEQUENZA  "STOP ricevuto (nessuna sequenza in corso)"
 
 /* ============================================================
  * Boot / watchdog
