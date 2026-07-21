@@ -25,6 +25,38 @@ static char  rx_buf[RX_BUF_SIZE];
 static volatile int rx_pos;
 static int at_timeout_count = 0;
 
+/*
+* Mutex che protegge l'accesso esclusivo alla UART del modem.
+*
+* K_MUTEX_DEFINE crea un k_mutex statico gia' inizializzato (nessuna
+* chiamata di init necessaria). E' rientrante: lo stesso thread puo'
+* prenderlo piu' volte di seguito senza bloccarsi da solo.
+*/
+K_MUTEX_DEFINE(modem_mutex);
+
+int modem_lock(int timeout_ms)
+{
+    int64_t start = k_uptime_get();
+
+    int ret = k_mutex_lock(&modem_mutex, K_MSEC(timeout_ms));
+    if (ret != 0) {
+        LOG_ERR("modem_lock: timeout dopo %d ms - UART occupata", timeout_ms);
+        return -EAGAIN;
+    }
+
+    int64_t waited = k_uptime_get() - start;
+    if (waited > 50) {
+        LOG_INF("modem_lock: atteso %lld ms (UART occupata da altra transazione)", waited);
+    }
+
+    return 0;
+}
+
+void modem_unlock(void)
+{
+    k_mutex_unlock(&modem_mutex);
+}
+
 /* ----------------------------------------------------------------
  * Callback UART interrupt-driven
  * ---------------------------------------------------------------- */
@@ -131,6 +163,11 @@ int modem_init(void)
 
 int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms)
 {
+    if (modem_lock(timeout_ms + 5000) != 0) {
+        if (resp && resp_len > 0) resp[0] = '\0';
+        return -EAGAIN;
+    }
+
     LOG_INF("AT>> [%s]", cmd);
 
     rx_clear();
@@ -170,13 +207,17 @@ int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms)
             LOG_ERR("Troppi timeout consecutivi - reset modem");
             at_timeout_count = 0;
             gpio_ctrl_bg95_reset();
+            modem_unlock();
             modem_configure_network();
+            return -EIO;
         }
     } else {
         at_timeout_count = 0;  /* reset contatore su risposta OK */
     }
 
-    return resp_has_ok() ? 0 : -EIO;
+    int ret = resp_has_ok() ? 0 : -EIO;
+    modem_unlock();
+    return ret;
 }
 
 int modem_check(void)

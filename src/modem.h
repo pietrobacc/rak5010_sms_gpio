@@ -13,6 +13,28 @@ int modem_get_battery(uint8_t *percent, uint16_t *mv);
 /* Restituisce il device UART del modem (usato da sms.c per Ctrl+Z) */
 const struct device *modem_get_uart(void);
 
+/**
+ * @brief Acquisisce l'accesso esclusivo alla UART del modem.
+ *
+ * modem_send_at() lo fa gia' internamente per i comandi AT semplici.
+ * Va chiamato a mano solo per transazioni multi-step che non passano
+ * da modem_send_at() (es. sms_send(), che parla direttamente con la
+ * UART per gestire il prompt ">").
+ * Rientrante: se lo stesso thread lo prende due volte di seguito non
+ * si blocca da solo (contatore interno di Zephyr).
+ *
+ * @param timeout_ms  Tempo massimo di attesa per il lock.
+ * @return 0 se acquisito, -EAGAIN se timeout (UART occupata troppo a lungo).
+ */
+int modem_lock(int timeout_ms);
+
+/**
+ * @brief Rilascia il lock preso con modem_lock().
+ *        Va chiamato esattamente una volta per ogni modem_lock() riuscito,
+ *        anche nei percorsi di errore/timeout.
+ */
+void modem_unlock(void);
+
 /* Svuota il buffer RX del modem */
 void modem_rx_clear(void);
 

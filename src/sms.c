@@ -70,6 +70,11 @@ int sms_send(const char *number, const char *message)
 
     if (!number || !message || !uart_dev) return -EINVAL;
 
+    if (modem_lock(25000) != 0) {
+        LOG_ERR("sms_send: UART occupata, invio annullato");
+        return -EAGAIN;
+    }
+ 
     LOG_INF("Invio SMS a %s: [%s]", number, message);
 
     /* --- Step 1: invia AT+CMGS="numero"\r\n --- */
@@ -102,6 +107,7 @@ int sms_send(const char *number, const char *message)
 
     if (!got_prompt) {
         LOG_ERR("Timeout attesa prompt '>' per AT+CMGS");
+        modem_unlock();
         return -ETIMEDOUT;
     }
 
@@ -125,11 +131,14 @@ int sms_send(const char *number, const char *message)
         }
         if (strstr(rx, "ERROR")) {
             LOG_ERR("Errore invio SMS: %s", rx);
+            modem_unlock();
             return -EIO;
         }
         k_msleep(100);
         elapsed += 100;
     }
+
+    modem_unlock();
 
     if (!sent_ok) {
         LOG_WRN("Timeout attesa +CMGS - SMS potrebbe non essere stato inviato");
