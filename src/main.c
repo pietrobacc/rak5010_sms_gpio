@@ -216,10 +216,6 @@ static void handle_status(const char *sender)
     float temp, hum;                    // Legge i dati del sensore SHTC3
     read_sensor(&temp, &hum);
 
-    uint8_t bat_pct;                    // Legge lo stato della batteria dal modem    
-    uint16_t bat_mv;                    // Legge la tensione della batteria in mV dal modem
-    modem_get_battery(&bat_pct, &bat_mv);
-
     uint8_t rssi;               // Variabile per livello segnale RSSI (non usato direttamente qui)
     int16_t dbm;                // Variabile per livello segnale in dBm
 
@@ -256,7 +252,6 @@ static void handle_status(const char *sender)
             (double)temp,
             (double)hum,
             (double)vext,
-            (double)bat_mv/1000,
             signal_str,
             gen_str,
             pom_str);

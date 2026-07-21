@@ -54,7 +54,6 @@
     "Temp: %.1f'C\n" \
     "Umidita: %.1f%%\n" \
     "VBATT: %.1fV\n" \
-    "VCC: %.2fV\n" \
     "Segnale: %s\n" \
     "Gen: %s\n" \
     "Pom: %s"
