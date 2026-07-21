@@ -34,6 +34,7 @@
 #include "sms.h"
 #include "sequence.h"
 #include "auth.h"
+#include "sms_replies.h"
 #include "wdt.h"
 
 
@@ -177,10 +178,7 @@ static void handle_config(const char *sender)
     char msg[256];
     
     snprintf(msg, sizeof(msg),
-             "T1 = %u s\nT2 = %u s\nT3 = %u s\n"
-             "T4 = %u s\nT5 = %u min\nT6 = %u min\n"
-             "S1 = %.1f V\n"
-             "Autost: %s\n",
+             REPLY_FMT_CONFIG_1,
              p->t1_ms / 1000,
              p->t2_ms / 1000,
              p->t3_ms / 1000,
@@ -199,7 +197,7 @@ static void handle_config(const char *sender)
     /* Aggiungi secondo SMS - Messaggio CONFIG*/
     char msg2[160];
     snprintf(msg2, sizeof(msg2),
-            "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u",
+            REPLY_FMT_CONFIG_2,
             strlen(auth_get_number(1)) ? auth_get_number(1) : "-",
             strlen(auth_get_number(2)) ? auth_get_number(2) : "-",
             strlen(auth_get_number(3)) ? auth_get_number(3) : "-",
@@ -254,13 +252,7 @@ static void handle_status(const char *sender)
     float vext = read_vext_avg();           // Legge la tensione esterna tramite ADC
 
     snprintf(msg, sizeof(msg),
-            "Temp: %.1f'C\n"
-            "Umidita: %.1f%%\n"
-            "VBATT: %.1fV\n"
-            "VCC: %.2fV\n"
-            "Segnale: %s\n"
-            "Gen: %s\n"
-            "Pom: %s",
+            REPLY_FMT_STATUS,
             (double)temp,
             (double)hum,
             (double)vext,
@@ -301,12 +293,7 @@ static void handle_set(const char *sender, const char *text)
     if (sscanf(text, "SET %3s %u", key, &val) != 2) {
         LOG_WRN("SET: formato non valido: '%s'", text);
         if (REPLY_ENABLED) {
-            sms_send(sender,
-                     "Formato:\n"
-                     "  SET T1/T2/T3/T4 <sec>\n"
-                     "  SET T5/T6 <min>\n"
-                     "  SET S1 <volt*10>\n"
-                     "  (es. SET S1 125 = 12.5V)");
+            sms_send(sender, REPLY_SET_FORMATO);
         }
         return;
     }
@@ -316,7 +303,7 @@ static void handle_set(const char *sender, const char *text)
         if (val > 1440) {
             LOG_WRN("SET: valore fuori range per %s: %u (max 1440 min)", key, val);
             if (REPLY_ENABLED) {
-                sms_send(sender, "Valore non valido. T5/T6 max 1440 min (24h).");
+                sms_send(sender, REPLY_SET_T56_RANGE);
             }
             return;
         }
@@ -325,7 +312,7 @@ static void handle_set(const char *sender, const char *text)
         if (val < 100 || val > 140) {
             LOG_WRN("SET: valore S1 fuori range: %u (valido 100-140)", val);
             if (REPLY_ENABLED) {
-                sms_send(sender, "Valore non valido. SET S1 range: 100-140 (es. 125 = 12.5V).");
+                sms_send(sender, REPLY_SET_S1_RANGE);
             }
             return;
         }
@@ -334,7 +321,7 @@ static void handle_set(const char *sender, const char *text)
         if (val == 0 || val > 300) {
             LOG_WRN("SET: valore fuori range per %s: %u (valido 1-300 s)", key, val);
             if (REPLY_ENABLED) {
-                sms_send(sender, "Valore non valido. Range: 1-300 secondi.");
+                sms_send(sender, REPLY_SET_T14_RANGE);
             }
             return;
         }
@@ -346,12 +333,12 @@ static void handle_set(const char *sender, const char *text)
         int ret = sequence_set_s1(volt);
         if (ret == 0) {
             char msg[64];
-            snprintf(msg, sizeof(msg), "S1 impostato a %.1f V (salvato)", (double)volt);
+            snprintf(msg, sizeof(msg), REPLY_FMT_SET_S1_OK, (double)volt);
             LOG_INF("%s", msg);
             if (REPLY_ENABLED) sms_send(sender, msg);
         } else {
             LOG_ERR("SET S1 fallito: %d", ret);
-            if (REPLY_ENABLED) sms_send(sender, "Errore salvataggio S1.");
+            if (REPLY_ENABLED) sms_send(sender, REPLY_SET_S1_ERR);
         }
         return;
     }
@@ -361,15 +348,15 @@ static void handle_set(const char *sender, const char *text)
     if (ret == 0) {
         char msg[64];
         if (strcmp(key, "T5") == 0 || strcmp(key, "T6") == 0) {
-            snprintf(msg, sizeof(msg), "%s impostato a %u min (salvato)", key, val);
+            snprintf(msg, sizeof(msg), REPLY_FMT_SET_MIN_OK, key, val);
         } else {
-            snprintf(msg, sizeof(msg), "%s impostato a %u s (salvato)", key, val);
+            snprintf(msg, sizeof(msg), REPLY_FMT_SET_SEC_OK, key, val);
         }
         LOG_INF("%s", msg);
         if (REPLY_ENABLED) sms_send(sender, msg);
     } else {
         LOG_ERR("SET fallito per '%s': %d", key, ret);
-        if (REPLY_ENABLED) sms_send(sender, "Parametro non valido. Usa T1-T6 o S1.");
+        if (REPLY_ENABLED) sms_send(sender, REPLY_SET_PARAM_ERR);
     }
 }
 
@@ -419,12 +406,7 @@ static void on_sms_received(const sms_message_t *msg)
             strcmp(t, "STOP")        != 0) {
             LOG_WRN("Comando non autorizzato per numero cliente: %s", t);
             if (REPLY_ENABLED) {
-                sms_send(msg->sender,
-                     "Comandi disponibili:\n"
-                     "START\n"
-                     "START POMPA\n"
-                     "STOP\n"
-                     "STATUS");
+                sms_send(msg->sender, REPLY_CMD_LIST_CLIENTE);
             }
             return;
         }
@@ -450,32 +432,33 @@ static void on_sms_received(const sms_message_t *msg)
 
         if (st == SEQ_IDLE) {
             if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
-                /* Serbatoio già pieno */
-                if (REPLY_ENABLED) sms_send(msg->sender,
-                        "Avvio pompa bloccato: serbatoio gia' pieno!");
+                /* Serbatoio già vuoto - pompa non può aspirare a vuoto */
+                sms_send(msg->sender, REPLY_POMPA_BLOCCATA_VUOTO);
+
             } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1 &&
                     !sequence_generatore_is_on(NULL)) {
                 /* Generatore acceso manualmente - avvia solo pompa */
-                if (REPLY_ENABLED) sms_send(msg->sender,
-                        "Generatore gia' acceso - avvio pompa...");
+                if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_GEN_GIA_ACCESO);
                 sequence_start_pompa(msg->sender);
+
             } else {
                 /* Accensione normale generatore + pompa */
-                if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore + pompa...");
+                if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_AVVIO_GEN_POMPA);
                 sequence_start_pompa(msg->sender);
             }
+
         } else if (st == SEQ_GEN_OK) {
             /* Generatore già acceso -> aggancia pompa */
             int ret = sequence_attach_pompa(msg->sender);
             if (ret == 0) {
-                if (REPLY_ENABLED) sms_send(msg->sender, "Pompa in aggancio...");
+                if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_IN_AGGANCIO);
             }
         } else if (st == SEQ_POMPA_ON) {
             /* Pompa già in funzione */
-            if (REPLY_ENABLED) sms_send(msg->sender, "Pompa gia' in funzione.");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_GIA_FUNZIONE);
         } else {
             /* Accensione generatore in corso */
-            if (REPLY_ENABLED) sms_send(msg->sender, "Attendere accensione generatore.");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_ATTENDI_GEN);
         }
         return;
     }
@@ -488,13 +471,12 @@ static void on_sms_received(const sms_message_t *msg)
 
         if (st != SEQ_IDLE) {
             /* Altra sequenza già in corso */
-            if (REPLY_ENABLED) sms_send(msg->sender, "Sequenza gia' in corso.");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_START_GIA_IN_CORSO);
         } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1) {
             /* Generatore già acceso manualmente - blocca avvio sequenza */
-            if (REPLY_ENABLED) sms_send(msg->sender, "ATTENZIONE!! Generatore gia' acceso manualmente!\n"
-                                                     "Spegnere fisicamente prima di usare START.");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_START_GEN_MANUALE);
         } else {
-            if (REPLY_ENABLED) sms_send(msg->sender, "Avvio generatore...");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_START_AVVIO);
             sequence_start(msg->sender);
         }
         return;
@@ -529,9 +511,9 @@ static void on_sms_received(const sms_message_t *msg)
             if (ret == 0) {
                 char reply[64];
                 if (strlen(num) > 0) {
-                    snprintf(reply, sizeof(reply), "NUM%u impostato: %s", idx, num);
+                    snprintf(reply, sizeof(reply), REPLY_FMT_NUM_SET, idx, num);
                 } else {
-                    snprintf(reply, sizeof(reply), "NUM%u cancellato", idx);
+                    snprintf(reply, sizeof(reply), REPLY_FMT_NUM_CLEARED, idx);
                 }
                 if (REPLY_ENABLED) sms_send(msg->sender, reply);
             }
@@ -547,12 +529,10 @@ static void on_sms_received(const sms_message_t *msg)
         int ret = auth_set_notify(idx);
         if (ret == 0) {
             char reply[64];
-            snprintf(reply, sizeof(reply),
-                    "Notifiche -> NUM%u (%s)",
-                    idx, auth_get_notify_number());
+            snprintf(reply, sizeof(reply), REPLY_FMT_NOTIFY_SET, idx, auth_get_notify_number());
             if (REPLY_ENABLED) sms_send(msg->sender, reply);
         } else {
-            if (REPLY_ENABLED) sms_send(msg->sender, "Indice non valido (1-3)");
+            if (REPLY_ENABLED) sms_send(msg->sender, REPLY_NOTIFY_IDX_ERR);
         }
         return;
     }
@@ -569,12 +549,12 @@ static void on_sms_received(const sms_message_t *msg)
 
     if (strcmp(t, "AUTOSTART ON") == 0) {
        sequence_set_autostart(true);
-        if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: ON (salvato)");
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_AUTOSTART_ON);
         return;
     }
     if (strcmp(t, "AUTOSTART OFF") == 0) {
         sequence_set_autostart(false);
-        if (REPLY_ENABLED) sms_send(msg->sender, "Autostart: OFF (salvato)");
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_AUTOSTART_OFF);
         return;
     }
 
@@ -583,16 +563,7 @@ static void on_sms_received(const sms_message_t *msg)
 
     LOG_WRN("Comando non riconosciuto: [%s]", t);
     if (REPLY_ENABLED) {
-        sms_send(msg->sender,
-         "START\n"
-         "START POMPA\n"
-         "STOP\n"
-         "CONFIG\n"
-         "STATUS\n"
-         "AUTOSTART ON/OFF\n"
-         "SET T1/T2/T3/T4 <sec>\n"
-         "SET T5/T6 <min>\n"
-         "SET S1 <V*10>");
+        sms_send(msg->sender, REPLY_CMD_LIST_TECH);
     }
 }
 
@@ -725,9 +696,9 @@ int main(void)
     const char *notify = auth_get_notify_number();
     if (strlen(notify) > 0) {
       if (g_reset_reason & NRF_POWER_RESETREAS_DOG_MASK) {
-          sms_send(notify, "ATTENZIONE: Riavvio da watchdog!");
+          sms_send(notify, REPLY_BOOT_WATCHDOG);
       } else {
-          sms_send(notify, "INFO: Sistema avviato!");
+          sms_send(notify, REPLY_BOOT_NORMALE);
       }
     }
 
@@ -824,10 +795,7 @@ int main(void)
                         sequence_get_params()->autostart) {
                         /* VEXT bassa confermata + autostart abilitato
                          * → avvio automatico generatore */
-                        snprintf(msg, sizeof(msg),
-                                 "ATTENZIONE: Batteria bassa (%.1fV) - "
-                                 "avvio automatico generatore!",
-                                 (double)vext);
+                        snprintf(msg, sizeof(msg), REPLY_FMT_BATT_AUTOSTART, (double)vext);
                         LOG_WRN("%s", msg);
                         sms_send(auth_get_notify_number(), msg);
                         sequence_start(auth_get_notify_number());
@@ -842,11 +810,7 @@ int main(void)
                         if (!sms_sended || vext <= next_sms) {
                             sms_sended = true;
                             next_sms   = vext - delta_vext;
-                            snprintf(msg, sizeof(msg),
-                                     "ATTENZIONE: Batteria bassa (%.1fV)!\n"
-                                     "Autostart disabilitato.\n"
-                                     "Prossimo SMS a %.1fV.",
-                                     (double)vext, (double)next_sms);
+                            snprintf(msg, sizeof(msg), REPLY_FMT_BATT_AVVISO, (double)vext, (double)next_sms);
                             LOG_WRN("%s", msg);
                             sms_send(auth_get_notify_number(), msg);
                         } else {
