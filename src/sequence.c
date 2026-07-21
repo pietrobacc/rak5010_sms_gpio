@@ -339,7 +339,7 @@ static void seq_work_handler(struct k_work *work)
         spegni_tutto();
 
         switch (trigger) {
-        case 0: case 0: sms_send(reply_to, REPLY_GENPOMPA_TIMEOUT_T6); break;
+        case 0: sms_send(reply_to, REPLY_GENPOMPA_TIMEOUT_T6); break;
         case 1: sms_send(reply_to, REPLY_GENPOMPA_VUOTO); break;
         case 2: sms_send(reply_to, REPLY_GENPOMPA_STOP); break;
         default: sms_send(reply_to, REPLY_GENPOMPA_DEFAULT); break;
