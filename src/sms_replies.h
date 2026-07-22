@@ -117,12 +117,12 @@
  * IN1 = galleggiante di livello minimo sul serbatoio di alimento:
  *       HIGH quando il serbatoio e' VUOTO (la pompa non puo' aspirare
  *       a vuoto, quindi viene bloccata/spenta).
- * IN2 = galleggiante di troppo-pieno sul serbatoio di riempimento:
+ * IN2 = galleggiante di troppo-pieno sul serbatoio di versamento:
  *       HIGH quando il serbatoio di destinazione e' pieno (pompa
  *       spenta per evitare fuoriuscite).
  * ============================================================ */
 #define REPLY_POMPA_BLOCCATA_VUOTO         "Avvio pompa bloccato: serbatoio di pescaggio vuoto!"
-#define REPLY_POMPA_BLOCCATA_TROPPOPIENO   "Avvio pompa bloccato: serbatoio di riempimento pieno!"
+#define REPLY_POMPA_BLOCCATA_TROPPOPIENO   "Avvio pompa bloccato: serbatoio di versamento pieno!"
 #define REPLY_POMPA_GEN_GIA_ACCESO   "Generatore gia' acceso - avvio pompa..."
 #define REPLY_POMPA_AVVIO_GEN_POMPA  "Avvio generatore + pompa..."
 #define REPLY_POMPA_IN_AGGANCIO      "Pompa in aggancio..."
@@ -137,7 +137,7 @@
 
 #define REPLY_POMPA_NON_AVVIATA_TROPPOPIENO \
     "Pompa non avviata!\n" \
-    "Serbatoio di riempimento pieno."
+    "Serbatoio di versamento pieno."
 
 #define REPLY_GENPOMPA_TIMEOUT_T6      "Generatore e pompa spenti - Timeout T6"
 #define REPLY_GENPOMPA_VUOTO           "Generatore e pompa spenti - Rilevato serbatoio vuoto"
@@ -177,5 +177,15 @@
     "ATTENZIONE: Batteria bassa (%.1fV)!\n" \
     "Autostart disabilitato.\n" \
     "Prossimo SMS a %.1fV."
+
+/* ============================================================
+ * IN3 - Serbatoio di versamento vuoto
+ * Monitorato nel loop principale (non nelle sequenze pompa)
+ * ============================================================ */
+#define REPLY_IN3_VUOTO \
+    "ATTENZIONE: Serbatoio di versamento vuoto!"
+
+#define REPLY_IN3_AUTOSTART \
+    "ATTENZIONE: Serbatoio di versamento vuoto - avvio automatico generatore+pompa!"
 
 #endif /* SMS_REPLIES_H */

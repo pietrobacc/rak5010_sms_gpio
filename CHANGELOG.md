@@ -4,6 +4,18 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.2.0] - 2026-07
+
+### Aggiunto
+- Monitoraggio **IN3** nel loop principale: segnala serbatoio di
+  versamento vuoto, con debounce a 3 cicli consecutivi (~15s) per
+  evitare falsi trigger da rimbalzi del galleggiante
+  - Notifica SMS al numero NOTIFY quando IN3 si attiva
+  - Con `autostart` abilitato e sistema a riposo: avvio automatico
+    di generatore + pompa (`sequence_start_pompa`), rispettando le
+    sicurezze IN1/IN2 già esistenti
+  - Si riarma automaticamente quando IN3 torna a riposo
+
 ## [1.1.1] - 2026-07
 
 ### Corretto
@@ -22,7 +34,7 @@ versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 ## [1.1.0] - 2026-07
 
 ### Aggiunto
-- Supporto galleggiante **IN2** (troppo-pieno sul serbatoio di riempimento),
+- Supporto galleggiante **IN2** (troppo-pieno sul serbatoio di versamento),
   simmetrico a IN1 (vuoto sul serbatoio di pescaggio), su tutti e 3 i
   percorsi di accensione pompa:
   - `START POMPA` da sistema a riposo (blocco preventivo)

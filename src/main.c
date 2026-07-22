@@ -60,7 +60,9 @@ static const struct device *shtc3_dev;   // Device SHTC3 per lettura temperatura
 
 #define VEXT_DIVIDER_FACTOR     9.333f  /* (100k + 12k) / 12k */
 #define VEXT_SAMPLES            5       /* campioni per la media mobile */
+
 #define VEXT_LOW_CYCLES         3       /* cicli consecutivi sotto soglia prima di agire */
+#define IN3_ACTIVE_CYCLES       3       /* cicli consecutivi IN3 HIGH prima di agire (debounce) */
 
 static const struct adc_dt_spec adc_vext =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
@@ -431,7 +433,7 @@ static void on_sms_received(const sms_message_t *msg)
                 if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_VUOTO);
 
             } else if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
-                /* Serbatoio di riempimento già pieno - pompa non va avviata */
+                /* Serbatoio di versamento già pieno - pompa non va avviata */
                 if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_TROPPOPIENO);
 
             } else if (gpio_ctrl_exp_in_get(EXP_IN_0) == 1 &&
@@ -836,6 +838,45 @@ int main(void)
 
         // Legge lo stato degli ingressi EXP_IN_0..7 e li logga.
         if (gpio_ctrl_mcp_is_ready()) {
+
+            /* ----------------------------------------------------------------
+             * Controllo IN3: segnala serbatoio di versamento vuoto.
+             *
+             * in3_active_count: debounce, richiede IN3_ACTIVE_CYCLES cicli
+             * consecutivi HIGH prima di agire (evita falsi trigger da
+             * rimbalzi del galleggiante). in3_notified evita di ripetere
+             * l'azione ad ogni ciclo finche' resta HIGH.
+             * ---------------------------------------------------------------- */
+            static uint8_t in3_active_count = 0;
+            static bool    in3_notified     = false;
+
+            if (gpio_ctrl_exp_in_get(EXP_IN_3) == 1) {
+                in3_active_count++;
+                if (in3_active_count >= IN3_ACTIVE_CYCLES && !in3_notified) {
+                    in3_notified = true;
+
+                    if (sequence_get_state() == SEQ_IDLE &&
+                        sequence_get_params()->autostart) {
+                        /* Serbatoio versamento vuoto confermato + autostart
+                         * abilitato → avvio automatico generatore + pompa */
+                        LOG_WRN("%s", REPLY_IN3_AUTOSTART);
+                        sms_send(auth_get_notify_number(), REPLY_IN3_AUTOSTART);
+                        sequence_start_pompa(auth_get_notify_number());
+                    } else {
+                        /* Solo notifica: autostart disabilitato, oppure
+                         * una sequenza e' gia' in corso */
+                        LOG_WRN("%s", REPLY_IN3_VUOTO);
+                        sms_send(auth_get_notify_number(), REPLY_IN3_VUOTO);
+                    }
+                }
+            } else {
+                if (in3_active_count > 0 || in3_notified) {
+                    LOG_INF("IN3 tornato normale - reset");
+                }
+                in3_active_count = 0;
+                in3_notified     = false;
+            }
+
             LOG_INF("EXP_IN : %d %d %d %d %d %d %d %d",
             gpio_ctrl_exp_in_get(EXP_IN_0),
             gpio_ctrl_exp_in_get(EXP_IN_1),

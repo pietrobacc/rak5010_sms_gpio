@@ -442,7 +442,7 @@ static void seq_pompa_handler(struct k_work *work)
         return;
     }
 
-    /* Sicurezza: verifica che il serbatoio di riempimento non sia già pieno (IN2) */
+    /* Sicurezza: verifica che il serbatoio di versamento non sia già pieno (IN2) */
     if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
         LOG_WRN("SEQ POMPA: IN2 già HIGH - troppo-pieno, pompa non avviata");
         if (!manuale) {
