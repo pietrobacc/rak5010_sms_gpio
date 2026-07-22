@@ -4,6 +4,21 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.1.1] - 2026-07
+
+### Corretto
+- SMS in arrivo non più rilevati da `AT+CMGL` dopo un uso prolungato:
+  causa probabile, memoria SMS della SIM (`"SM"`) esaurita (spesso solo
+  10-20 messaggi di capacita'). La rete GSM mette in coda i messaggi
+  quando la memoria e' piena, senza segnalare errore, e li consegna
+  tutti insieme al primo spazio libero (es. dopo un riavvio che
+  svuota lo storage) — comportamento coerente con quanto osservato.
+- `sms_init()`: storage SMS spostato dalla SIM (`"SM"`) alla memoria
+  interna del modem BG95 (`"ME"`), molto più capiente; svuotamento
+  esplicito di `"SM"` all'avvio come misura precauzionale; aggiunto
+  log diagnostico (`AT+CPMS?`) per monitorare l'occupazione dello
+  storage nel tempo
+
 ## [1.1.0] - 2026-07
 
 ### Aggiunto

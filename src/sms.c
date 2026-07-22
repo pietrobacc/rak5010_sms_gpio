@@ -34,6 +34,30 @@ int sms_init(sms_received_cb_t cb)
     modem_send_at("AT+CSCS=\"GSM\"", resp, sizeof(resp), 5000);
 
     /*
+     * Storage SMS: di default il BG95 spesso punta a "SM" (la SIM),
+     * che su molte SIM ha capacita' molto bassa (anche solo 10-20
+     * messaggi). Se si riempie, i nuovi SMS in arrivo non vengono
+     * piu' salvati e CMGL non li trova mai.
+     *
+     * Passiamo a "ME" (memoria interna del modem, molto piu' capiente):
+     * 1) selezioniamo esplicitamente "SM" e la svuotiamo, per sicurezza,
+     *    nel caso sia gia' piena da SMS vecchi mai ripuliti
+     * 2) passiamo a "ME" per lettura/scrittura/notifiche future
+     */
+    modem_send_at("AT+CPMS=\"SM\",\"SM\",\"SM\"", NULL, 0, 5000);
+    modem_send_at("AT+CMGD=1,4", NULL, 0, 8000);   /* svuota SM */
+
+    ret = modem_send_at("AT+CPMS=\"ME\",\"ME\",\"ME\"", resp, sizeof(resp), 5000);
+    if (ret != 0) {
+        LOG_WRN("AT+CPMS=ME fallito - resto su storage di default");
+    }
+
+    /* Log diagnostico: quanti SMS occupati / capacita' totale */
+    if (modem_send_at("AT+CPMS?", resp, sizeof(resp), 5000) == 0) {
+        LOG_INF("SMS storage: %s", resp);
+    }
+
+    /*
      * Notifica nuovi SMS via URC +CMTI
      * mode=2, mt=1 → notifica +CMTI senza recapitare il testo
      */
