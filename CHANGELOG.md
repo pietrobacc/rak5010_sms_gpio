@@ -4,6 +4,20 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.3.0] - 2026-07
+
+### Aggiunto
+- Rilevamento perdita feedback **IN0** (generatore fermo
+  inaspettatamente) durante `GEN_OK`/`POMPA_ON`, nei 4 punti in cui il
+  firmware attende con il generatore acceso: attesa T5 (solo
+  generatore), attesa T4 prima della pompa (entrambi i percorsi
+  `START` e `START POMPA`), e durante il funzionamento pompa
+  (`attendi_spegnimento`). Spegnimento sicuro + SMS di allerta
+  (`ATTENZIONE: ...`) distinto dai normali messaggi di fine sequenza
+- `STATI_IMPIANTO.md`: tabella di riferimento con tutte le
+  combinazioni sequenza/ingressi/uscite significative (stati normali,
+  operativi, e incoerenze SW/HW)
+
 ## [1.2.0] - 2026-07
 
 ### Aggiunto

@@ -111,6 +111,8 @@
 #define REPLY_GEN_ACCESO           "Generatore acceso"
 #define REPLY_GEN_TIMEOUT_T5       "Generatore spento - Timeout T5"
 
+#define REPLY_GEN_PERSO            "ATTENZIONE: Generatore fermo inaspettatamente (feedback IN0 perso)!"
+
 /* ============================================================
  * START POMPA
  *
@@ -145,6 +147,8 @@
 #define REPLY_GENPOMPA_STOP            "Generatore e pompa spenti - STOP ricevuto"
 #define REPLY_GENPOMPA_DEFAULT         "Generatore e pompa spenti"
 
+#define REPLY_GENPOMPA_PERSO           "ATTENZIONE: Generatore e pompa spenti - feedback generatore perso (IN0)!"
+
 /* Spegnimento pompa già agganciata (dopo T6/IN1/IN2/STOP) */
 #define REPLY_POMPA_STOP_TIMEOUT_T6      "Pompa spenta - Timeout T6"
 #define REPLY_GENPOMPA_STOP_TIMEOUT_T6   "Generatore e pompa spenti - Timeout T6"
@@ -152,6 +156,8 @@
 #define REPLY_GENPOMPA_STOP_VUOTO        "Generatore e pompa spenti - serbatoio di pescaggio vuoto"
 #define REPLY_POMPA_STOP_TROPPOPIENO     "Pompa spenta - troppo-pieno"
 #define REPLY_GENPOMPA_STOP_TROPPOPIENO  "Generatore e pompa spenti - troppo-pieno"
+#define REPLY_POMPA_STOP_PERSO           "ATTENZIONE: Pompa spenta - generatore fermo inaspettatamente (feedback IN0 perso)!"
+#define REPLY_GENPOMPA_STOP_PERSO        "ATTENZIONE: Generatore e pompa spenti - generatore fermo inaspettatamente (feedback IN0 perso)!"
 #define REPLY_POMPA_STOP_RICHIESTO       "Pompa spenta - STOP ricevuto"
 #define REPLY_GENPOMPA_STOP_RICHIESTO    "Generatore e pompa spenti - STOP ricevuto"
 #define REPLY_POMPA_SPENTA_DEFAULT       "Pompa spenta"

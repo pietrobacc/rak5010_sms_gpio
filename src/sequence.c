@@ -211,12 +211,12 @@ gen_stop:
 }
 
 /* ============================================================================
- * Helper - attesa spegnimento con 4 trigger
+ * Helper - attesa spegnimento con 5 trigger
  * Usato sia da START (solo T5+STOP) che da START POMPA (T6+IN1+IN2+STOP)
  *
  * @param timeout_min  Timeout in minuti (0 = infinito)
  * @param check_in1    true = controlla anche EXP_IN_1 (vuoto) e EXP_IN_2 (troppo-pieno)
- * @return motivo dello stop: 0=timeout, 1=IN1 (vuoto), 2=STOP, 3=IN2 (troppo-pieno)
+ * @return motivo dello stop: 0=timeout, 1=IN1 (vuoto), 2=STOP, 3=IN2 (troppo-pieno), 4=IN0 perso (generatore fermo inaspettatamente)
  * ============================================================================ */
 
 static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
@@ -231,6 +231,10 @@ static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
         if (stop_requested) {
             LOG_INF("SEQ: trigger STOP dopo %u s", elapsed / 1000);
             return 2;
+        }
+        if (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
+            LOG_WRN("SEQ: generatore fermo inaspettatamente (IN0 perso) dopo %u s", elapsed / 1000);
+            return 4;
         }
         if (check_in1 && gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
             LOG_INF("SEQ: trigger IN1 HIGH (serbatoio vuoto) dopo %u s", elapsed / 1000);
@@ -293,9 +297,15 @@ static void seq_work_handler(struct k_work *work)
     uint32_t t5_ms   = params.t5_min * 60000U;
     uint32_t elapsed = 0;
     bool do_pompa    = false;
+    bool gen_perso   = false;
 
     while (1) {
         if (stop_requested) break;
+        if (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
+            LOG_WRN("SEQ: generatore fermo inaspettatamente (IN0 perso) dopo %u s", elapsed / 1000);
+            gen_perso = true;
+            break;
+        }
         if (attach_pompa_requested) {
             attach_pompa_requested = false;
             if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
@@ -320,6 +330,13 @@ static void seq_work_handler(struct k_work *work)
         elapsed += 1000;
     }
 
+    if (gen_perso) {
+        spegni_tutto();
+        sms_send(reply_to, REPLY_GEN_PERSO);
+        state = SEQ_IDLE;
+        return;
+    }
+
     if (stop_requested) {
         spegni_tutto();
         sms_send(reply_to, REPLY_GEN_STOP);
@@ -334,6 +351,13 @@ static void seq_work_handler(struct k_work *work)
             if (stop_requested) {
                 spegni_tutto();
                 sms_send(reply_to, REPLY_GENPOMPA_STOP);
+                state = SEQ_IDLE;
+                return;
+            }
+            if (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
+                LOG_WRN("SEQ: generatore fermo inaspettatamente (IN0 perso) durante attesa T4");
+                spegni_tutto();
+                sms_send(reply_to, REPLY_GENPOMPA_PERSO);
                 state = SEQ_IDLE;
                 return;
             }
@@ -355,6 +379,7 @@ static void seq_work_handler(struct k_work *work)
         case 1: sms_send(reply_to, REPLY_GENPOMPA_VUOTO); break;
         case 2: sms_send(reply_to, REPLY_GENPOMPA_STOP); break;
         case 3: sms_send(reply_to, REPLY_GENPOMPA_TROPPOPIENO); break;
+        case 4: sms_send(reply_to, REPLY_GENPOMPA_PERSO); break;
         default: sms_send(reply_to, REPLY_GENPOMPA_DEFAULT); break;
         }
 
@@ -426,6 +451,18 @@ static void seq_pompa_handler(struct k_work *work)
             state = SEQ_IDLE;
             return;
         }
+        if (gpio_ctrl_exp_in_get(EXP_IN_0) == 0) {
+            LOG_WRN("SEQ POMPA: generatore fermo inaspettatamente (IN0 perso) durante attesa T4");
+            if (!manuale) spegni_tutto();
+            else {
+                /* Spegni solo pompa - non toccare OUT0 (non e' sotto controllo firmware) */
+                gpio_ctrl_exp_out_set(EXP_OUT_2, false);
+                pompa_on = false;
+            }
+            sms_send(reply_to, manuale ? REPLY_POMPA_STOP_PERSO : REPLY_GENPOMPA_STOP_PERSO);
+            state = SEQ_IDLE;
+            return;
+        }
         k_msleep(100);
     }
 
@@ -489,6 +526,11 @@ static void seq_pompa_handler(struct k_work *work)
         sms_send(reply_to, manuale ?
                  REPLY_POMPA_STOP_TROPPOPIENO :
                  REPLY_GENPOMPA_STOP_TROPPOPIENO);
+        break;
+    case 4:
+        sms_send(reply_to, manuale ?
+                 REPLY_POMPA_STOP_PERSO :
+                 REPLY_GENPOMPA_STOP_PERSO);
         break;
     default:
         sms_send(reply_to, manuale ? REPLY_POMPA_SPENTA_DEFAULT : REPLY_GENPOMPA_DEFAULT);
