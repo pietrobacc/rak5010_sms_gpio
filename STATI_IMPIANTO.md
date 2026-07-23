@@ -2,8 +2,11 @@
 
 Questo documento elenca le combinazioni significative di **sequenza +
 ingressi + uscite** e cosa rappresentano per l'impianto nel suo insieme.
-È pensato come riferimento per la diagnosi (via log RTT o debug), non
-è (ancora) implementato nel firmware.
+È pensato come riferimento per la diagnosi (via log RTT o debug).
+
+> **Aggiornamento v1.3.0**: il rilevamento della perdita di IN0
+> durante `GEN_OK`/`POMPA_ON` (generatore fermo inaspettatamente) è
+> stato implementato — vedi sezione 2, non più una lacuna aperta.
 
 ---
 
@@ -12,7 +15,7 @@ ingressi + uscite** e cosa rappresentano per l'impianto nel suo insieme.
 | Segnale | Significato | Dove viene gestito |
 |---|---|---|
 | **Sequenza** | `IDLE` / `RUNNING` / `GEN_OK` / `POMPA_ON` | `sequence_get_state()` |
-| **IN0** | Generatore acceso **manualmente** (feedback fisico) | usato per bloccare/permettere START, e come conferma accensione durante la sequenza |
+| **IN0** | Generatore acceso **manualmente** (feedback fisico) | usato per bloccare/permettere START; conferma accensione durante la sequenza; monitorato in continuo durante `GEN_OK`/`POMPA_ON` (v1.3.0) |
 | **IN1** | Serbatoio di **pescaggio** vuoto (sorgente) | ferma/blocca la pompa per sicurezza (non può aspirare a vuoto) |
 | **IN2** | Serbatoio di **versamento** pieno (destinazione) | ferma/blocca la pompa (eviterebbe fuoriuscite) |
 | **IN3** | Serbatoio di **versamento** vuoto (destinazione) | notifica, ed eventualmente autostart generatore+pompa |
@@ -49,6 +52,7 @@ problema di sensore/cablaggio, non una condizione reale dell'impianto.
 | IN3 = 1, sequenza IDLE, autostart OFF | Versamento vuoto, in attesa di intervento manuale (`START POMPA`) |
 | IN3 = 1, sequenza IDLE, autostart ON | Versamento vuoto → dovrebbe già essere partito l'avvio automatico |
 | IN0 = 1 durante `RUNNING`, prima del previsto | Generatore partito più veloce del timeout T2 atteso (non un problema, solo un timing) |
+| **IN0 = 0** durante `GEN_OK`/`POMPA_ON` (qualsiasi punto) | Generatore fermo inaspettatamente (feedback perso) — dalla v1.3.0 rilevato attivamente in tutti e 4 i punti di attesa (T5, T4×2, `attendi_spegnimento`): spegnimento sicuro + SMS `ATTENZIONE: ...` |
 
 ---
 
@@ -63,21 +67,18 @@ pulito).
 |---|---|
 | Sequenza IDLE, ma **OUT0 = 1** | Relè generatore bloccato acceso, oppure stato software non sincronizzato con l'hardware |
 | Sequenza IDLE, ma **OUT2 = 1** | Relè pompa bloccato acceso — nessuna sequenza lo sta comandando |
-| Sequenza `GEN_OK` o `POMPA_ON`, ma **IN0 = 0** | Il generatore si è fermato da solo (guasto/carburante) **senza che il firmware se ne accorga** — vedi nota sotto |
 | Sequenza `RUNNING`, ma **OUT2 = 1** | La pompa si è attivata prima ancora che il generatore fosse confermato acceso |
 | **OUT1 = 1** fuori da `RUNNING` | Impulso di avviamento rimasto attivo oltre il previsto (relè bloccato) |
 | **IN2 = 1 e IN3 = 1** insieme | Fisicamente impossibile sullo stesso serbatoio → galleggiante/cablaggio da controllare |
 
-### Nota sulla lacuna più importante
+### Nota storica
 
-La riga *"GEN_OK/POMPA_ON ma IN0=0"* è la più rilevante delle tre:
-oggi il firmware **non monitora continuamente IN0** una volta
-raggiunto `GEN_OK` — aspetta solo il timeout T5, uno `STOP`, o una
-richiesta di aggancio pompa. Se il generatore si spegnesse da solo a
-metà (es. finito il carburante) **nessuno se ne accorgerebbe** finché
-non arriva una `STATUS` manuale. Questo è un candidato naturale per un
-futuro miglioramento (rilevare la perdita di IN0 durante `GEN_OK`
-o `POMPA_ON` e notificarlo), se vorrai svilupparlo.
+Fino alla v1.2.0, la combinazione *"sequenza `GEN_OK`/`POMPA_ON` ma
+IN0=0"* era la lacuna principale di questa tabella: il firmware non
+monitorava IN0 una volta raggiunto `GEN_OK`, quindi un generatore
+fermatosi da solo (es. carburante finito) sarebbe passato inosservato
+fino alla prossima `STATUS` manuale. Dalla **v1.3.0** questo caso è
+rilevato attivamente — vedi sezione 2.
 
 ---
 
