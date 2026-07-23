@@ -7,21 +7,23 @@
  *   EXP_OUT_2 - Pompa (solo START POMPA, rimane ON fino allo spegnimento)
  *
  * Input:
- *   EXP_IN_0  - Feedback accensione generatore
- *   EXP_IN_1  - Trigger spegnimento pompa (solo START POMPA)
+ *   EXP_IN_0  - Feedback accensione generatore (anche: rileva accensione manuale)
+ *   EXP_IN_1  - Serbatoio di pescaggio vuoto (trigger spegnimento pompa)
+ *   EXP_IN_2  - Serbatoio di versamento pieno (trigger spegnimento pompa)
+ *   EXP_IN_3  - Serbatoio di versamento vuoto (gestito in main.c, non qui)
  *
  * Flusso START:
  *   OUT0 ON -> attesa T1 -> OUT1 ON -> attesa T2 -> OUT1 OFF
  *   -> polling IN0 (max T3)
  *   -> FAIL: OUT0 OFF + SMS
- *   -> OK: SMS + attesa T4 (inf se 0) | STOP -> OUT0 OFF + SMS
+ *   -> OK: SMS + attesa T4 (inf se 0) | STOP | IN0 perso -> OUT0 OFF + SMS
  *
  * Flusso START POMPA:
  *   OUT0 ON -> attesa T1 -> OUT1 ON -> attesa T2 -> OUT1 OFF
  *   -> polling IN0 (max T3)
  *   -> FAIL: OUT0 OFF + SMS
  *   -> OK: SMS + attesa T5 -> OUT2 ON + SMS
- *   -> attesa T6 (inf se 0) | IN1 HIGH | STOP
+ *   -> attesa T6 (inf se 0) | IN1 HIGH | IN2 HIGH | STOP | IN0 perso
  *   -> OUT2 OFF + OUT0 OFF + SMS
  *
  * Copyright (c) 2025
