@@ -4,6 +4,16 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.4.1] - 2026-07
+
+### Corretto
+- `plant_status.c` classificava erroneamente come ANOMALIA la finestra
+  transitoria (fino a ~1s) tra uno STOP ricevuto (uscite gia' spente
+  da `sequence_stop()`) e l'aggiornamento di `state` a `SEQ_IDLE` da
+  parte del thread della sequenza. Aggiunto `sequence_is_stop_pending()`
+  per riconoscere questo caso e classificarlo come ATTENZIONE
+  ("spegnimento in corso") anziche' ANOMALIA.
+
 ## [1.4.0] - 2026-07
 
 ### Aggiunto

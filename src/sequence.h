@@ -153,6 +153,14 @@ sequence_state_t sequence_get_state(void);
 const char *sequence_state_name(sequence_state_t state);
 
 /**
+ * @brief true se uno STOP e' stato ricevuto ma il thread della sequenza
+ *        non ha ancora finito di elaborarlo (le uscite fisiche sono gia'
+ *        spente, ma 'state' non e' ancora tornato a SEQ_IDLE - finestra
+ *        di transizione fino a ~1s).
+ */
+bool sequence_is_stop_pending(void);
+
+/**
  * @brief Restituisce un puntatore ai parametri correnti (sola lettura).
  *
  * @return Puntatore alla struttura interna dei parametri.

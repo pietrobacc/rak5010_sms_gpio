@@ -90,6 +90,12 @@ plant_level_t plant_status_evaluate(char *desc, size_t desc_len)
             return PLANT_ANOMALIA;
         }
         if (out0 == 0) {
+            if (sequence_is_stop_pending()) {
+                snprintf(desc, desc_len,
+                         "Spegnimento in corso (STOP ricevuto) - uscite gia' spente, "
+                         "stato in aggiornamento");
+                return PLANT_ATTENZIONE;
+            }
             snprintf(desc, desc_len,
                      "RUNNING ma OUT0=0 - generatore non comandato durante l'accensione");
             return PLANT_ANOMALIA;
@@ -119,6 +125,12 @@ plant_level_t plant_status_evaluate(char *desc, size_t desc_len)
 
     case SEQ_POMPA_ON:
         if (out2 == 0) {
+            if (sequence_is_stop_pending()) {
+                snprintf(desc, desc_len,
+                         "Spegnimento in corso (STOP ricevuto) - uscite gia' spente, "
+                         "stato in aggiornamento");
+                return PLANT_ATTENZIONE;
+            }
             snprintf(desc, desc_len,
                      "POMPA_ON ma OUT2=0 - incoerente, la pompa dovrebbe essere attiva");
             return PLANT_ANOMALIA;

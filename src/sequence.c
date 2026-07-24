@@ -653,6 +653,11 @@ const char *sequence_state_name(sequence_state_t s)
     }
 }
 
+bool sequence_is_stop_pending(void)
+{
+    return stop_requested;
+}
+
 const sequence_params_t *sequence_get_params(void)
 {
     return &params;
