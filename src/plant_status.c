@@ -17,6 +17,7 @@ const char *plant_level_str(plant_level_t level)
 plant_level_t plant_status_evaluate(char *desc, size_t desc_len)
 {
     sequence_state_t seq = sequence_get_state();
+    const sequence_params_t *params = sequence_get_params();
 
     int in0 = gpio_ctrl_exp_in_get(EXP_IN_0);
     int in1 = gpio_ctrl_exp_in_get(EXP_IN_1);
