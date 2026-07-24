@@ -54,13 +54,13 @@
     "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u"
 
     /* Messaggio di risposta per STATUS */
-+#define REPLY_FMT_STATUS \
-+    "Gen: %s\n" \
-+    "Pom: %s\n" \
-+    "Serb Pesc.: %s\n" \
-+    "Serb Vers.: %s\n" \
-+    "VBATT: %.1fV\n" \
-+    "Segnale: %s"
+#define REPLY_FMT_STATUS \
+    "Gen: %s\n" \
+    "Pom: %s\n" \
+    "Serb Pesc.: %s\n" \
+    "Serb Vers.: %s\n" \
+    "VBATT: %.1fV\n" \
+    "Segnale: %s"
 
 /* ============================================================
  * SET T1-T6 / S1
