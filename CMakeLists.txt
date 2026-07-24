@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.20.0)
 # impostata automaticamente dall'ambiente nRF Connect in VS Code.
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(rak5010_sms_gpio VERSION 1.3.0)
+project(rak5010_sms_gpio VERSION 1.4.0)
 
 # Sorgenti dell'applicazione:
 #   main.c       - Loop principale, dispatcher comandi SMS
@@ -24,6 +24,7 @@ target_sources(app PRIVATE
     src/modem.c
     src/sms.c
     src/sequence.c
+    src/plant_status.c
     src/auth.c
     src/wdt.c
 )

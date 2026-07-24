@@ -149,6 +149,9 @@ void sequence_stop(const char *sender);
  */
 sequence_state_t sequence_get_state(void);
 
+/** @brief Nome testuale dello stato (es. "IDLE", "GEN_OK"), per log/SMS. */
+const char *sequence_state_name(sequence_state_t state);
+
 /**
  * @brief Restituisce un puntatore ai parametri correnti (sola lettura).
  *

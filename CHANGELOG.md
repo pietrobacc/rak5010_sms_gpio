@@ -4,6 +4,21 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.4.0] - 2026-07
+
+### Aggiunto
+- Nuovo modulo `plant_status.c/h`: classifica lo stato complessivo
+  dell'impianto (sequenza + IN0-3 + OUT0-2) in OK/ATTENZIONE/ANOMALIA/
+  IMPOSSIBILE con descrizione testuale, secondo le regole di
+  `STATI_IMPIANTO.md`
+- `sequence_state_name()`: nome testuale dello stato sequenza
+
+### Modificato
+- Loop principale: i log separati `VEXT`/`EXP_IN`/`EXP_OUT` sostituiti
+  da un'unica riga per ciclo (`Seq=... VEXT=... IN=... OUT=... | LIVELLO:
+  descrizione`), con livello di log (`INF`/`WRN`/`ERR`) allineato alla
+  gravità rilevata
+
 ## [1.3.0] - 2026-07
 
 ### Aggiunto

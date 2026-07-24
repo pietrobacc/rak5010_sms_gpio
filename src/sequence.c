@@ -642,6 +642,17 @@ sequence_state_t sequence_get_state(void)
     return state;
 }
 
+const char *sequence_state_name(sequence_state_t s)
+{
+    switch (s) {
+    case SEQ_IDLE:     return "IDLE";
+    case SEQ_RUNNING:  return "RUNNING";
+    case SEQ_GEN_OK:   return "GEN_OK";
+    case SEQ_POMPA_ON: return "POMPA_ON";
+    default:           return "?";
+    }
+}
+
 const sequence_params_t *sequence_get_params(void)
 {
     return &params;

@@ -35,6 +35,7 @@
 #include "sequence.h"
 #include "auth.h"
 #include "sms_replies.h"
+#include "plant_status.h"
 #include "wdt.h"
 
 
@@ -768,11 +769,10 @@ int main(void)
         // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
         sms_poll();
 
-        // Legge la tensione esterna (VEXT) tramite ADC e la logga.
+        // Legge la tensione esterna (VEXT) tramite ADC.
         /* Lettura VEXT con media mobile */
         float vext = read_vext_avg();
-        LOG_INF("VEXT: %.1f V", (double)vext);
-
+   
         /* ----------------------------------------------------------------
          * Controllo VEXT per avvio automatico o avviso batteria bassa.
          *
@@ -877,25 +877,40 @@ int main(void)
                 in3_notified     = false;
             }
 
-            LOG_INF("EXP_IN : %d %d %d %d %d %d %d %d",
-            gpio_ctrl_exp_in_get(EXP_IN_0),
-            gpio_ctrl_exp_in_get(EXP_IN_1),
-            gpio_ctrl_exp_in_get(EXP_IN_2),
-            gpio_ctrl_exp_in_get(EXP_IN_3),
-            gpio_ctrl_exp_in_get(EXP_IN_4),
-            gpio_ctrl_exp_in_get(EXP_IN_5),
-            gpio_ctrl_exp_in_get(EXP_IN_6),
-            gpio_ctrl_exp_in_get(EXP_IN_7));
+            int in0 = gpio_ctrl_exp_in_get(EXP_IN_0);
+            int in1 = gpio_ctrl_exp_in_get(EXP_IN_1);
+            int in2 = gpio_ctrl_exp_in_get(EXP_IN_2);
+            int in3 = gpio_ctrl_exp_in_get(EXP_IN_3);
+            int in4 = gpio_ctrl_exp_in_get(EXP_IN_4);
+            int in5 = gpio_ctrl_exp_in_get(EXP_IN_5);
+            int in6 = gpio_ctrl_exp_in_get(EXP_IN_6);
+            int in7 = gpio_ctrl_exp_in_get(EXP_IN_7);
 
-            LOG_INF("EXP_OUT: %d %d %d %d %d %d %d %d",
-            gpio_ctrl_exp_out_get(EXP_OUT_0),
-            gpio_ctrl_exp_out_get(EXP_OUT_1),
-            gpio_ctrl_exp_out_get(EXP_OUT_2),
-            gpio_ctrl_exp_out_get(EXP_OUT_3),
-            gpio_ctrl_exp_out_get(EXP_OUT_4),
-            gpio_ctrl_exp_out_get(EXP_OUT_5),
-            gpio_ctrl_exp_out_get(EXP_OUT_6),
-            gpio_ctrl_exp_out_get(EXP_OUT_7));
+            int out0 = gpio_ctrl_exp_out_get(EXP_OUT_0);
+            int out1 = gpio_ctrl_exp_out_get(EXP_OUT_1);
+            int out2 = gpio_ctrl_exp_out_get(EXP_OUT_2);
+            int out3 = gpio_ctrl_exp_out_get(EXP_OUT_3);
+            int out4 = gpio_ctrl_exp_out_get(EXP_OUT_4);
+            int out5 = gpio_ctrl_exp_out_get(EXP_OUT_5);
+            int out6 = gpio_ctrl_exp_out_get(EXP_OUT_6);
+            int out7 = gpio_ctrl_exp_out_get(EXP_OUT_7);
+
+            char plant_desc[100];
+            plant_level_t plant_level = plant_status_evaluate(plant_desc, sizeof(plant_desc));
+
+            char line[220];
+            snprintf(line, sizeof(line),
+                     "Seq=%-8s VEXT=%.1fV IN=%d%d%d%d%d%d%d%d OUT=%d%d%d%d%d%d%d%d | %s: %s",
+                     sequence_state_name(sequence_get_state()), (double)vext,
+                     in0, in1, in2, in3, in4, in5, in6, in7,
+                     out0, out1, out2, out3, out4, out5, out6, out7,
+                     plant_level_str(plant_level), plant_desc);
+
+            switch (plant_level) {
+            case PLANT_OK:         LOG_INF("%s", line); break;
+            case PLANT_ATTENZIONE: LOG_WRN("%s", line); break;
+            default:                LOG_ERR("%s", line); break;
+            }
         }
         
         /* Blink LED in base allo stato */
