@@ -77,6 +77,8 @@ typedef struct {
     uint32_t t6_min;  /**< Tempo massimo pompa accesa (minuti) */
     float    s1_v;
     bool     autostart;
+    bool     sens_pieno_installato;  /**< IN2 (versamento pieno) fisicamente cablato? */
+    bool     sens_vuoto_installato;  /**< IN3 (versamento vuoto) fisicamente cablato? */
 } sequence_params_t;
 
 
@@ -199,6 +201,19 @@ int sequence_set_s1(float volt);
  *         scrittura NVS.
  */
 int sequence_set_autostart(bool enabled);
+
+/**
+ * @brief Imposta se il sensore IN2 (versamento pieno) e' fisicamente
+ *        installato, e lo salva in NVS. Se false, IN2 viene ignorato
+ *        ovunque (sicurezza pompa, plant_status, notifiche) per evitare
+ *        falsi allarmi da un pin non cablato.
+ */
+int sequence_set_sens_pieno(bool installato);
+
+/**
+ * @brief Come sequence_set_sens_pieno(), ma per IN3 (versamento vuoto).
+ */
+int sequence_set_sens_vuoto(bool installato);
 
 /**
  * @brief Restituisce lo stato del generatore.

@@ -189,7 +189,9 @@ static void handle_config(const char *sender)
              p->t5_min,
              p->t6_min,
              (double)p->s1_v,
-             p->autostart ? "ON" : "OFF");
+             p->autostart ? "ON" : "OFF",
+             p->sens_pieno_installato ? "ON" : "OFF",
+             p->sens_vuoto_installato ? "ON" : "OFF");
   
     LOG_INF("CONFIG richiesto: %s", msg);
 
@@ -213,12 +215,8 @@ static void handle_config(const char *sender)
 
 static void handle_status(const char *sender)
 {
-    //const sequence_params_t *p = sequence_get_params();
     char msg[256];                      // msg per SMS di STATUS
     
-    float temp, hum;                    // Legge i dati del sensore SHTC3
-    read_sensor(&temp, &hum);
-
     uint8_t rssi;               // Variabile per livello segnale RSSI (non usato direttamente qui)
     int16_t dbm;                // Variabile per livello segnale in dBm
 
@@ -248,16 +246,37 @@ static void handle_status(const char *sender)
              (pom_uptime % 3600) / 60);
     }
 
+    /* Serbatoio di pescaggio (IN1): sempre monitorato */
+    const char *serb_pesc_str = (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) ? "VUOTO" : "OK";
+
+    /* Serbatoio di versamento (IN2=pieno, IN3=vuoto): solo se installati */
+    const sequence_params_t *p = sequence_get_params();
+    bool pieno_hi = p->sens_pieno_installato && gpio_ctrl_exp_in_get(EXP_IN_2) == 1;
+    bool vuoto_hi = p->sens_vuoto_installato && gpio_ctrl_exp_in_get(EXP_IN_3) == 1;
+
+    const char *serb_vers_str;
+    if (!p->sens_pieno_installato && !p->sens_vuoto_installato) {
+        serb_vers_str = "N/A";
+    } else if (pieno_hi && vuoto_hi) {
+        serb_vers_str = "ERRORE SENS.";
+    } else if (pieno_hi) {
+        serb_vers_str = "PIENO";
+    } else if (vuoto_hi) {
+        serb_vers_str = "VUOTO";
+    } else {
+        serb_vers_str = "OK";
+    }
+
     float vext = read_vext_avg();           // Legge la tensione esterna tramite ADC
 
     snprintf(msg, sizeof(msg),
             REPLY_FMT_STATUS,
-            (double)temp,
-            (double)hum,
+            gen_str, 
+            pom_str,
+            serb_pesc_str,
+            serb_vers_str,
             (double)vext,
-            signal_str,
-            gen_str,
-            pom_str);
+            signal_str);
   
     LOG_INF("STATUS richiesto: %s", msg);
 
@@ -433,7 +452,8 @@ static void on_sms_received(const sms_message_t *msg)
                 /* Serbatoio già vuoto - pompa non può aspirare a vuoto */
                 if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_VUOTO);
 
-            } else if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+            } else if (sequence_get_params()->sens_pieno_installato &&
+                    gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
                 /* Serbatoio di versamento già pieno - pompa non va avviata */
                 if (REPLY_ENABLED) sms_send(msg->sender, REPLY_POMPA_BLOCCATA_TROPPOPIENO);
 
@@ -557,6 +577,28 @@ static void on_sms_received(const sms_message_t *msg)
     if (strcmp(t, "AUTOSTART OFF") == 0) {
         sequence_set_autostart(false);
         if (REPLY_ENABLED) sms_send(msg->sender, REPLY_AUTOSTART_OFF);
+        return;
+    }
+
+    /* SENS PIENO / SENS VUOTO ON/OFF */
+    if (strcmp(t, "SENS PIENO ON") == 0) {
+        sequence_set_sens_pieno(true);
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_SENS_PIENO_ON);
+        return;
+    }
+    if (strcmp(t, "SENS PIENO OFF") == 0) {
+        sequence_set_sens_pieno(false);
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_SENS_PIENO_OFF);
+        return;
+    }
+    if (strcmp(t, "SENS VUOTO ON") == 0) {
+        sequence_set_sens_vuoto(true);
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_SENS_VUOTO_ON);
+        return;
+    }
+    if (strcmp(t, "SENS VUOTO OFF") == 0) {
+        sequence_set_sens_vuoto(false);
+        if (REPLY_ENABLED) sms_send(msg->sender, REPLY_SENS_VUOTO_OFF);
         return;
     }
 
@@ -850,7 +892,10 @@ int main(void)
             static uint8_t in3_active_count = 0;
             static bool    in3_notified     = false;
 
-            if (gpio_ctrl_exp_in_get(EXP_IN_3) == 1) {
+            if (!sequence_get_params()->sens_vuoto_installato) {
+                in3_active_count = 0;
+                in3_notified     = false;
+            } else if (gpio_ctrl_exp_in_get(EXP_IN_3) == 1) {
                 in3_active_count++;
                 if (in3_active_count >= IN3_ACTIVE_CYCLES && !in3_notified) {
                     in3_notified = true;

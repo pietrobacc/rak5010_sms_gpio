@@ -20,8 +20,8 @@ plant_level_t plant_status_evaluate(char *desc, size_t desc_len)
 
     int in0 = gpio_ctrl_exp_in_get(EXP_IN_0);
     int in1 = gpio_ctrl_exp_in_get(EXP_IN_1);
-    int in2 = gpio_ctrl_exp_in_get(EXP_IN_2);
-    int in3 = gpio_ctrl_exp_in_get(EXP_IN_3);
+    int in2 = params->sens_pieno_installato ? gpio_ctrl_exp_in_get(EXP_IN_2) : 0;
+    int in3 = params->sens_vuoto_installato ? gpio_ctrl_exp_in_get(EXP_IN_3) : 0;
 
     int out0 = gpio_ctrl_exp_out_get(EXP_OUT_0);
     int out1 = gpio_ctrl_exp_out_get(EXP_OUT_1);

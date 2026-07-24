@@ -34,6 +34,8 @@
     "CONFIG\n" \
     "STATUS\n" \
     "AUTOSTART ON/OFF\n" \
+    "SENS PIENO ON/OFF\n" \
+    "SENS VUOTO ON/OFF\n" \
     "SET T1/T2/T3/T4 <sec>\n" \
     "SET T5/T6 <min>\n" \
     "SET S1 <V*10>"
@@ -43,20 +45,22 @@
     "T1 = %u s\nT2 = %u s\nT3 = %u s\n" \
     "T4 = %u s\nT5 = %u min\nT6 = %u min\n" \
     "S1 = %.1f V\n" \
-    "Autost: %s\n"
+    "Autost: %s\n" \
+    "SensPieno: %s\n" \
+    "SensVuoto: %s\n"
 
     /* Messaggio 2 di risposta 1 per CONFIG */
 #define REPLY_FMT_CONFIG_2 \
     "NUM1:%s\nNUM2:%s\nNUM3:%s\nNOTIFY:NUM%u"
 
     /* Messaggio di risposta per STATUS */
-#define REPLY_FMT_STATUS \
-    "Temp: %.1f'C\n" \
-    "Umidita: %.1f%%\n" \
-    "VBATT: %.1fV\n" \
-    "Segnale: %s\n" \
-    "Gen: %s\n" \
-    "Pom: %s"
++#define REPLY_FMT_STATUS \
++    "Gen: %s\n" \
++    "Pom: %s\n" \
++    "Serb Pesc.: %s\n" \
++    "Serb Vers.: %s\n" \
++    "VBATT: %.1fV\n" \
++    "Segnale: %s"
 
 /* ============================================================
  * SET T1-T6 / S1
@@ -90,6 +94,11 @@
  * ============================================================ */
 #define REPLY_AUTOSTART_ON   "Autostart: ON (salvato)"
 #define REPLY_AUTOSTART_OFF  "Autostart: OFF (salvato)"
+
+#define REPLY_SENS_PIENO_ON   "Sensore versamento PIENO (IN2): installato (salvato)"
+#define REPLY_SENS_PIENO_OFF  "Sensore versamento PIENO (IN2): non installato (salvato)"
+#define REPLY_SENS_VUOTO_ON   "Sensore versamento VUOTO (IN3): installato (salvato)"
+#define REPLY_SENS_VUOTO_OFF  "Sensore versamento VUOTO (IN3): non installato (salvato)"
 
 /* ============================================================
  * START (solo generatore)

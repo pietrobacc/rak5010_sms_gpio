@@ -4,6 +4,17 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.5.0] - 2026-07
+
+### Aggiunto
+- Flag persistenti `sens_pieno_installato` (IN2) e `sens_vuoto_installato`
+  (IN3)...
+- Nuovi comandi SMS tecnici: `SENS PIENO ON/OFF`, `SENS VUOTO ON/OFF`
+- `CONFIG` ora mostra anche `SensPieno`/`SensVuoto`
+
+### Modificato
+- **`STATUS` ridisegnato** per il cliente finale...
+
 ## [1.4.1] - 2026-07
 
 ### Corretto

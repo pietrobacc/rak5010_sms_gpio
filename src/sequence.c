@@ -55,6 +55,8 @@ static sequence_params_t params = {
     .t6_min    = 0,
     .s1_v      = 12.5f,
     .autostart = false,
+    .sens_pieno_installato = false,  /* IN2 non ancora cablato di default */
+    .sens_vuoto_installato = false,  /* IN3 non ancora cablato di default */
 };
 
 static volatile sequence_state_t state = SEQ_IDLE;
@@ -102,6 +104,8 @@ static int settings_set_cb(const char *key, size_t len,
     else if (strcmp(key, "t5") == 0) params.t5_min = val_u;
     else if (strcmp(key, "t6") == 0) params.t6_min = val_u;
     else if (strcmp(key, "auto") == 0) params.autostart = (bool)val_u;
+    else if (strcmp(key, "sens_pieno") == 0) params.sens_pieno_installato = (bool)val_u;
+    else if (strcmp(key, "sens_vuoto") == 0) params.sens_vuoto_installato = (bool)val_u;
     else LOG_WRN("Settings: chiave sconosciuta '%s'", key);
 
     return 0;
@@ -242,7 +246,7 @@ static int attendi_spegnimento(uint32_t timeout_min, bool check_in1)
             LOG_INF("SEQ: trigger IN1 HIGH (serbatoio vuoto) dopo %u s", elapsed / 1000);
             return 1;
         }
-        if (check_in1 && gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+        if (check_in1 && params.sens_pieno_installato && gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
             LOG_INF("SEQ: trigger IN2 HIGH (troppo-pieno) dopo %u s", elapsed / 1000);
             return 3;
         }
@@ -313,7 +317,7 @@ static void seq_work_handler(struct k_work *work)
             if (gpio_ctrl_exp_in_get(EXP_IN_1) == 1) {
                 LOG_WRN("SEQ: aggancio pompa rifiutato - IN1 (serbatoio vuoto)");
                 sms_send(attach_pompa_sender, REPLY_POMPA_BLOCCATA_VUOTO);
-            } else if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+            } else if (params.sens_pieno_installato && gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
                 LOG_WRN("SEQ: aggancio pompa rifiutato - IN2 (troppo-pieno)");
                 sms_send(attach_pompa_sender, REPLY_POMPA_BLOCCATA_TROPPOPIENO);
             } else {
@@ -482,7 +486,7 @@ static void seq_pompa_handler(struct k_work *work)
     }
 
     /* Sicurezza: verifica che il serbatoio di versamento non sia già pieno (IN2) */
-    if (gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
+    if (params.sens_pieno_installato && gpio_ctrl_exp_in_get(EXP_IN_2) == 1) {
         LOG_WRN("SEQ POMPA: IN2 già HIGH - troppo-pieno, pompa non avviata");
         if (!manuale) {
             spegni_generatore();
@@ -560,7 +564,7 @@ int sequence_init(void)
     settings_load_subtree("seq");
 
     LOG_INF("Parametri: T1=%us T2=%us T3=%us T4=%us T5=%umin T6=%umin "
-        "S1=%.1fV Auto=%s",
+        "S1=%.1fV Auto=%s SensPieno=%s SensVuoto=%s",
         params.t1_ms  / 1000,
         params.t2_ms  / 1000,
         params.t3_ms  / 1000,
@@ -568,7 +572,9 @@ int sequence_init(void)
         params.t5_min,
         params.t6_min,
         (double)params.s1_v,
-        params.autostart ? "ON" : "OFF");
+        params.autostart ? "ON" : "OFF",
+        params.sens_pieno_installato ? "installato" : "N/A",
+        params.sens_vuoto_installato ? "installato" : "N/A");
     return 0;
 }
 
@@ -735,6 +741,28 @@ int sequence_set_autostart(bool enabled)
     int ret = settings_save_one("seq/auto", &val, sizeof(val));
     if (ret == 0) {
         LOG_INF("Salvato: AUTOSTART = %s", enabled ? "ON" : "OFF");
+    }
+    return ret;
+}
+
+int sequence_set_sens_pieno(bool installato)
+{
+    params.sens_pieno_installato = installato;
+    uint32_t val = (uint32_t)installato;
+    int ret = settings_save_one("seq/sens_pieno", &val, sizeof(val));
+    if (ret == 0) {
+        LOG_INF("Salvato: SENS PIENO (IN2) = %s", installato ? "installato" : "non installato");
+    }
+    return ret;
+}
+
+int sequence_set_sens_vuoto(bool installato)
+{
+    params.sens_vuoto_installato = installato;
+    uint32_t val = (uint32_t)installato;
+    int ret = settings_save_one("seq/sens_vuoto", &val, sizeof(val));
+    if (ret == 0) {
+        LOG_INF("Salvato: SENS VUOTO (IN3) = %s", installato ? "installato" : "non installato");
     }
     return ret;
 }
