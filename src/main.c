@@ -593,7 +593,7 @@ static void on_sms_received(const sms_message_t *msg)
 
     /*******************************************************************************************************/
     /* SOLAR (solo numeri tecnici) */
-    
+
     if (strcmp(t, "SOLAR") == 0) {
         handle_solar(msg->sender);
         return;
@@ -1040,6 +1040,19 @@ int main(void)
             case PLANT_OK:         LOG_INF("%s", line); break;
             case PLANT_ATTENZIONE: LOG_WRN("%s", line); break;
             default:                LOG_ERR("%s", line); break;
+            }
+        }
+
+        /* Log solare (Victron VE.Direct) - ogni ciclo, indipendente da MCP23017 */
+        {
+            victron_data_t vd;
+            if (victron_get_data(&vd) == 0) {
+                LOG_INF("Solare: V=%.2fV I=%.2fA VPV=%.2fV PPV=%.0fW CS=%d (%s) ERR=%d",
+                        (double)vd.vbatt_v, (double)vd.ibatt_a,
+                        (double)vd.vpv_v, (double)vd.ppv_w,
+                        vd.cs, victron_cs_str(vd.cs), vd.err);
+            } else {
+                LOG_INF("Solare: N/A (nessun dato dal regolatore)");
             }
         }
         

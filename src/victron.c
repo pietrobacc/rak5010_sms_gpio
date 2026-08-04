@@ -94,15 +94,7 @@ static void process_line(const char *line)
 
             k_mutex_lock(&latest_mutex, K_FOREVER);
             latest = working;
-            k_mutex_unlock(&latest_mutex);
-
-
-            /* DEBUG TEMPORANEO - da rimuovere dopo la verifica sul campo */
-            LOG_INF("Victron: V=%.2fV I=%.2fA VPV=%.2fV PPV=%.0fW CS=%d (%s) ERR=%d",
-                    (double)working.vbatt_v, (double)working.ibatt_a,
-                    (double)working.vpv_v, (double)working.ppv_w,
-                    working.cs, victron_cs_str(working.cs), working.err);
-                   
+            k_mutex_unlock(&latest_mutex);                  
         }
         memset(&working, 0, sizeof(working));
         working_has_data = false;
