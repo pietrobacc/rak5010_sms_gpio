@@ -4,6 +4,13 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.6.0] - 2026-07
+
+### Aggiunto
+- Modulo victron.c/h: lettura BlueSolar 75/10 MPPT via VE.Direct...
+- UART1 riassegnata da console a UART generica per VE.Direct
+- NON ANCORA TESTATO SU HARDWARE REALE
+
 ## [1.5.0] - 2026-07
 
 ### Aggiunto

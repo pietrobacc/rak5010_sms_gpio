@@ -36,6 +36,7 @@
 #include "auth.h"
 #include "sms_replies.h"
 #include "plant_status.h"
+#include "victron.h"
 #include "wdt.h"
 
 
@@ -727,6 +728,12 @@ int main(void)
      * ------------------------------------------------------------------ */
     sequence_init();
 
+
+    if (victron_init() != 0) {
+        LOG_WRN("Victron VE.Direct non disponibile - proseguo comunque");
+    }    
+
+    
      /* ------------------------------------------------------------------
      * 7a. Caricamento parametri numeri autorizzati da NVS
      * ------------------------------------------------------------------ */
