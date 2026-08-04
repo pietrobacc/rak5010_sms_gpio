@@ -4,6 +4,16 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.0] - 2026-07
+
+### Aggiunto
+- `STATUS` ora include una riga `Solare: ...` con sintesi in italiano
+  semplice dello stato del regolatore Victron (Spento/Carica/
+  Mantenimento/Avvio/GUASTO + potenza pannello, o N/A se il
+  regolatore non e' collegato/non invia ancora dati)
+- Nuovo comando `SOLAR` (solo numeri tecnici): dettaglio tecnico
+  completo (V, I, VPV, PPV, CS, ERR)
+
 ## [1.6.0] - 2026-07
 
 ### Aggiunto

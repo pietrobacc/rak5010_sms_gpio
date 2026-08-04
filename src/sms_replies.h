@@ -33,6 +33,7 @@
     "STOP\n" \
     "CONFIG\n" \
     "STATUS\n" \
+    "SOLAR\n" \
     "AUTOSTART ON/OFF\n" \
     "SENS PIENO ON/OFF\n" \
     "SENS VUOTO ON/OFF\n" \
@@ -59,8 +60,19 @@
     "Pom: %s\n" \
     "Serb Pesc.: %s\n" \
     "Serb Vers.: %s\n" \
+    "Solare: %s\n" \
     "VBATT: %.1fV\n" \
     "Segnale: %s"
+
+    /* Messaggio di risposta per SOLAR (dettaglio tecnico, solo tech) */
+#define REPLY_SOLAR_NA \
+    "Solare: N/A (nessun dato ricevuto dal regolatore)"
+
+#define REPLY_FMT_SOLAR_TECH \
+    "V=%.2fV I=%.2fA\n" \
+    "VPV=%.2fV PPV=%.0fW\n" \
+    "CS=%d (%s)\n" \
+    "ERR=%d"
 
 /* ============================================================
  * SET T1-T6 / S1

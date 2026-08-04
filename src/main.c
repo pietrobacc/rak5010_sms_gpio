@@ -214,6 +214,41 @@ static void handle_config(const char *sender)
     }
 }
 
+/* Costruisce una sintesi in italiano semplice dello stato solare, per
+ * il messaggio STATUS (cliente). Il dettaglio tecnico completo e'
+ * invece disponibile via il comando SOLAR (solo numeri tecnici). */
+static void solar_client_summary(char *buf, size_t len)
+{
+    victron_data_t v;
+    if (victron_get_data(&v) != 0) {
+        snprintf(buf, len, "N/A");
+        return;
+    }
+
+    if (v.err != 0) {
+        snprintf(buf, len, "GUASTO (E%d)", v.err);
+        return;
+    }
+
+    const char *stato;
+    switch (v.cs) {
+    case 0:   stato = "Spento";       break;
+    case 3:   /* Bulk */
+    case 4:   /* Absorption */
+    case 7:   /* Equalize */
+              stato = "Carica";       break;
+    case 5:   stato = "Mantenimento"; break;
+    case 245: stato = "Avvio";        break;
+    default:  stato = "?";            break;
+    }
+
+    if (v.cs == 245) {
+        snprintf(buf, len, "%s", stato);
+    } else {
+        snprintf(buf, len, "%s %.0fW", stato, (double)v.ppv_w);
+    }
+}
+
 static void handle_status(const char *sender)
 {
     char msg[256];                      // msg per SMS di STATUS
@@ -270,16 +305,51 @@ static void handle_status(const char *sender)
 
     float vext = read_vext_avg();           // Legge la tensione esterna tramite ADC
 
+    char solar_str[24];
+    solar_client_summary(solar_str, sizeof(solar_str));
+
     snprintf(msg, sizeof(msg),
             REPLY_FMT_STATUS,
             gen_str, 
             pom_str,
             serb_pesc_str,
             serb_vers_str,
+            solar_str,
             (double)vext,
             signal_str);
   
     LOG_INF("STATUS richiesto: %s", msg);
+
+    if (REPLY_ENABLED) {
+        sms_send(sender, msg);
+    }
+}
+
+/**
+ * @brief Gestisce il comando SOLAR (solo numeri tecnici): dettaglio
+ *        tecnico completo del regolatore Victron BlueSolar via VE.Direct.
+ */
+static void handle_solar(const char *sender)
+{
+    victron_data_t v;
+    if (victron_get_data(&v) != 0) {
+        LOG_WRN("SOLAR richiesto: nessun dato disponibile dal regolatore");
+        if (REPLY_ENABLED) sms_send(sender, REPLY_SOLAR_NA);
+        return;
+    }
+
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+             REPLY_FMT_SOLAR_TECH,
+             (double)v.vbatt_v,
+             (double)v.ibatt_a,
+             (double)v.vpv_v,
+             (double)v.ppv_w,
+             v.cs,
+             victron_cs_str(v.cs),
+             v.err);
+
+    LOG_INF("SOLAR richiesto: %s", msg);
 
     if (REPLY_ENABLED) {
         sms_send(sender, msg);
@@ -522,6 +592,14 @@ static void on_sms_received(const sms_message_t *msg)
     }
 
     /*******************************************************************************************************/
+    /* SOLAR (solo numeri tecnici) */
+    
+    if (strcmp(t, "SOLAR") == 0) {
+        handle_solar(msg->sender);
+        return;
+    }
+
+    /*******************************************************************************************************/
     /* SET NUM1/2/3                                                                                        */
 
     if (strncmp(t, "SET NUM", 7) == 0) {
@@ -733,7 +811,7 @@ int main(void)
         LOG_WRN("Victron VE.Direct non disponibile - proseguo comunque");
     }    
 
-    
+
      /* ------------------------------------------------------------------
      * 7a. Caricamento parametri numeri autorizzati da NVS
      * ------------------------------------------------------------------ */
