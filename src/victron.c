@@ -11,6 +11,7 @@ LOG_MODULE_REGISTER(victron, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define VICTRON_UART_NODE   DT_NODELABEL(uart1)
 #define LINE_BUF_SIZE       64
+#define VICTRON_STALE_MS    10000
 
 static const struct device *uart_dev;
 
@@ -164,5 +165,14 @@ int victron_get_data(victron_data_t *out)
     *out = latest;
     k_mutex_unlock(&latest_mutex);
 
-    return latest.valid ? 0 : -EAGAIN;
+    if (!out->valid) {
+        return -EAGAIN;
+    }
+
+    int64_t age_ms = k_uptime_get() - out->last_update_ms;
+    if (age_ms > VICTRON_STALE_MS) {
+        return -EAGAIN;
+    }
+
+    return 0;
 }
