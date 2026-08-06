@@ -27,7 +27,6 @@ static bool working_has_data;
 /* Ultimo frame completo, valido e "pubblicato": protetto da mutex per
  * l'accesso da altri thread (es. handle_status() in main.c) */
 static victron_data_t latest;
-static struct k_mutex latest_mutex;
 
 const char *victron_cs_str(int cs)
 {
@@ -93,9 +92,9 @@ static void process_line(const char *line)
             working.valid = true;
             working.last_update_ms = k_uptime_get();
 
-            k_mutex_lock(&latest_mutex, K_FOREVER);
+            unsigned int key = irq_lock();
             latest = working;
-            k_mutex_unlock(&latest_mutex);                  
+            irq_unlock(key);                  
         }
         memset(&working, 0, sizeof(working));
         working_has_data = false;
@@ -143,7 +142,6 @@ int victron_init(void)
         return -ENODEV;
     }
 
-    k_mutex_init(&latest_mutex);
     memset(&working, 0, sizeof(working));
     memset(&latest, 0, sizeof(latest));
     line_pos = 0;
@@ -161,9 +159,9 @@ int victron_get_data(victron_data_t *out)
         return -EINVAL;
     }
 
-    k_mutex_lock(&latest_mutex, K_FOREVER);
+    unsigned int key = irq_lock();
     *out = latest;
-    k_mutex_unlock(&latest_mutex);
+    irq_unlock(key);
 
     if (!out->valid) {
         return -EAGAIN;

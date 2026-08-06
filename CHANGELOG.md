@@ -4,6 +4,14 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.2] - 2026-07
+
+### Corretto
+- **Possibile causa di riavvio da watchdog**: victron.c usava un
+  k_mutex acquisito anche da process_line() (contesto interrupt).
+  I k_mutex non sono utilizzabili da ISR - rischio di blocco totale
+  del sistema. Sostituito con irq_lock()/irq_unlock().
+
 ## [1.7.1] - 2026-07
 
 ### Corretto
