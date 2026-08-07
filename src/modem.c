@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "modem.h"
 #include "gpio_ctrl.h"
+#include "wdt.h"
 
 LOG_MODULE_REGISTER(modem, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -206,6 +207,7 @@ int modem_send_at(const char *cmd, char *resp, size_t resp_len, int timeout_ms)
         if (at_timeout_count >= AT_TIMEOUT_MAX) {
             LOG_ERR("Troppi timeout consecutivi - reset modem");
             at_timeout_count = 0;
+            app_wdt_feed();
             gpio_ctrl_bg95_reset();
             modem_unlock();
             modem_configure_network();
@@ -240,20 +242,24 @@ int modem_configure_network(void)
 
     /* Echo off */
     modem_send_at("ATE0", resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
+    app_wdt_feed();
 
     /* LTE-M + NB-IoT */
     modem_send_at("AT+QCFG=\"nwscanseq\",020301,1",
                   resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
     modem_send_at("AT+QCFG=\"iotopmode\",2,1",
                   resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
+    app_wdt_feed();
 
     /* APN Swisscom Switzerland */
     modem_send_at("AT+CGDCONT=1,\"IP\",\"gprs.swisscom.ch\"",
                   resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
+    app_wdt_feed();
 
     /* Attendi registrazione rete (max 30 s) */
     for (int i = 0; i < 30; i++) {
         modem_send_at("AT+CREG?", resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
+        app_wdt_feed();
         if (strstr(resp, "+CREG: 0,1") || strstr(resp, "+CREG: 0,5")) {
             LOG_INF("Registrato in rete");
             return 0;

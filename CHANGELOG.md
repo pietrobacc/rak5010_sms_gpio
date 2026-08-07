@@ -4,6 +4,15 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.4] - 2026-07
+
+### Corretto
+- Probabile causa reale dei riavvii da watchdog ricorrenti:
+  modem_configure_network() non alimentava mai il watchdog. Il ciclo
+  di attesa registrazione rete puo' durare fino a 180s nel caso
+  peggiore, ben oltre il timeout di 30s. Aggiunto app_wdt_feed() in
+  piu' punti della funzione e prima della sequenza di reset modem.
+
 ## [1.7.3] - 2026-07
 
 ### Corretto
