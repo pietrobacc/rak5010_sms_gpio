@@ -715,6 +715,10 @@ int main(void)
 {
     int ret;
 
+    /* Versione firmware - prima riga di sempre, cosi' ogni log RTT
+     * riporta con certezza quale versione stava girando */
+    LOG_INF("rak5010_sms_gpio v%s", APP_FW_VERSION);
+
     /* Watchdog hardware - prima di tutto */
     ret = wdt_init();
     if (ret != 0) {

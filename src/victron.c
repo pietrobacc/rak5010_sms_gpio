@@ -24,8 +24,10 @@ static int  line_pos;
 static victron_data_t working;
 static bool working_has_data;
 
-/* Ultimo frame completo, valido e "pubblicato": protetto da mutex per
- * l'accesso da altri thread (es. handle_status() in main.c) */
+/* Ultimo frame completo, valido e "pubblicato": protetto da una
+ * sezione critica irq_lock()/irq_unlock() (non un k_mutex - questa
+ * struttura viene scritta da process_line(), che gira in contesto
+ * interrupt, quindi non puo' usare un mutex) */
 static victron_data_t latest;
 
 const char *victron_cs_str(int cs)

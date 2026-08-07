@@ -4,6 +4,15 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.3] - 2026-07
+
+### Corretto
+- Altra possibile causa di riavvio da watchdog: sms_poll() poteva
+  richiedere fino a ~37s nel caso peggiore con piu' SMS in coda e
+  modem/rete lenti - nessun blocco reale, solo tempo legittimo
+  accumulato tra un feed del watchdog e il successivo. Aggiunto
+  app_wdt_feed() durante sms_poll().
+
 ## [1.7.2] - 2026-07
 
 ### Corretto

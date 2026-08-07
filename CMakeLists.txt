@@ -9,7 +9,11 @@ cmake_minimum_required(VERSION 3.20.0)
 # impostata automaticamente dall'ambiente nRF Connect in VS Code.
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-project(rak5010_sms_gpio VERSION 1.7.2)
+project(rak5010_sms_gpio VERSION 1.7.3)
+
+# Espone la versione (definita sopra, unica fonte) al codice C come
+# APP_FW_VERSION, cosi' possiamo loggarla al boot senza duplicarla.
+target_compile_definitions(app PRIVATE APP_FW_VERSION="${PROJECT_VERSION}")
 
 # Sorgenti dell'applicazione:
 #   main.c       - Loop principale, dispatcher comandi SMS

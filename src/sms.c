@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include "modem.h"
 #include "sms.h"
+#include "wdt.h"
 
 LOG_MODULE_REGISTER(sms, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -274,6 +275,13 @@ void sms_poll(void)
 
     int ret = modem_send_at("AT+CMGL=\"REC UNREAD\"",
                             resp, sizeof(resp), 10000);
+    
+    /* Alimenta il watchdog qui: il solo controllo CMGF?+CMGL puo'
+     * richiedere fino a 11s nel caso peggiore. Se poi ci sono piu' SMS
+     * da processare (ognuno fino a 13s tra CMGR+CMGD), il totale del
+     * ciclo puo' avvicinarsi/superare i 30s del watchdog senza che ci
+     * sia nessun blocco reale - solo tempo legittimo accumulato. */
+    app_wdt_feed();
 
     if (ret != 0) {
         LOG_WRN("AT+CMGL fallito o nessun SMS non letto");
@@ -306,6 +314,10 @@ void sms_poll(void)
                 }
             }
             sms_delete(sms_idx);
+
+            /* Alimenta il watchdog dopo ogni SMS processato (fino a
+             * 13s tra CMGR+CMGD nel caso peggiore). */
+            app_wdt_feed();
         }
         p++;
     }
