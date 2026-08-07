@@ -4,6 +4,24 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.6] - 2026-07
+
+### Corretto
+- **Possibile causa reale della corruzione osservata nel log RTT**
+  (righe duplicate identiche + byte binari senza senso, peggiorata
+  invece di migliorare dopo l'aumento del buffer RTT in v1.7.5 -
+  indizio che il vero problema non era il buffer RTT in se', ma
+  qualcosa che lo spostamento in memoria ha reso piu' visibile):
+  possibile overflow dello stack del thread main o del system
+  workqueue, entrambi a soli 4096 byte nonostante l'accumulo di buffer
+  locali via via piu' grandi nel loop principale e nei work handler
+  della sequenza. Raddoppiati entrambi a 8192 byte.
+- Abilitato `CONFIG_HW_STACK_PROTECTION` (MPU hardware del nRF52840):
+  un eventuale overflow dello stack produce ora un fault esplicito e
+  diagnosticabile invece di corrompere silenziosamente la memoria
+  adiacente - conferma o esclude definitivamente questa ipotesi al
+  prossimo eventuale episodio.
+
 ## [1.7.5] - 2026-07
 
 ### Corretto
