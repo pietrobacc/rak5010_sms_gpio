@@ -4,6 +4,16 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.7.5] - 2026-07
+
+### Corretto
+- Buffer RTT aumentato da 4KB a 16KB (`CONFIG_SEGGER_RTT_BUFFER_SIZE_UP`):
+  con il buffer piccolo, log ravvicinati (es. il blocco Seq/Solare ad
+  ogni ciclo) potevano andare in overflow, causando timestamp fuori
+  ordine e frammenti di righe sovrapposti nel log RTT - solo un
+  problema di visualizzazione/debug, nessun impatto sul funzionamento
+  reale del firmware.
+
 ## [1.7.4] - 2026-07
 
 ### Corretto
