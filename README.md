@@ -43,7 +43,9 @@ internazionale. Questo file è in `.gitignore` e non verrà mai committato.
 ### Altri parametri
 
 - `REPLY_ENABLED` in `src/main.c`: abilita/disabilita le risposte SMS.
-- APN Swisscom già configurato in `src/modem.c` (`AT+CGDCONT`).
+- Nessun APN da configurare: il firmware usa solo SMS (nessun
+  contesto dati attivato), quindi funziona con SIM di qualsiasi
+  operatore senza modifiche.
 
 ---
 

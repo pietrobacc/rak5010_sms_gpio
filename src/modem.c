@@ -251,10 +251,13 @@ int modem_configure_network(void)
                   resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
     app_wdt_feed();
 
-    /* APN Swisscom Switzerland */
-    modem_send_at("AT+CGDCONT=1,\"IP\",\"gprs.swisscom.ch\"",
-                  resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
-    app_wdt_feed();
+    /* Nota: nessun AT+CGDCONT/APN qui - il firmware usa solo SMS
+     * (canale di segnalazione), mai un contesto dati (nessun
+     * AT+QIACT). L'APN non ha alcun effetto sull'SMS ed e' quindi
+     * irrilevante indipendentemente dall'operatore della SIM. *//* APN Swisscom Switzerland */
+    //    modem_send_at("AT+CGDCONT=1,\"IP\",\"gprs.swisscom.ch\"",
+    //              resp, sizeof(resp), AT_DEFAULT_TIMEOUT);
+    //    app_wdt_feed();
 
     /* Attendi registrazione rete (max 30 s) */
     for (int i = 0; i < 30; i++) {
