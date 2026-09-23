@@ -113,6 +113,28 @@ static bool resp_has_error(void)
     return (strstr(rx_buf, "ERROR") != NULL);
 }
 
+bool modem_reject_incoming_call(void)
+{
+    if (modem_lock(3000) != 0) {
+        return false;
+    }
+
+    bool ringing = (strstr(rx_buf, "RING") != NULL);
+    if (ringing) {
+        LOG_WRN("Chiamata in arrivo rilevata - rifiuto automatico (ATH)");
+        rx_clear();
+    }
+
+    modem_unlock();
+
+    if (ringing) {
+        char resp[64];
+        modem_send_at("ATH", resp, sizeof(resp), 3000);
+    }
+
+    return ringing;
+}
+
 /* ================================================================
  * Funzioni esposte per sms.c
  * ================================================================ */

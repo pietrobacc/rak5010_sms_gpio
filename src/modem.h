@@ -2,6 +2,7 @@
 #define MODEM_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <zephyr/device.h>
 
 int modem_init(void);
@@ -62,5 +63,7 @@ int modem_get_time(uint8_t *hour, uint8_t *minute, uint8_t *second,
  * @return 0 in caso di successo, negativo in caso di errore.
  */
 int modem_get_signal(uint8_t *rssi, int16_t *dbm);
+
+bool modem_reject_incoming_call(void);
 
 #endif /* MODEM_H */

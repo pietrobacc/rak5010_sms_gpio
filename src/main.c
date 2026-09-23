@@ -900,6 +900,8 @@ int main(void)
         // Polling SMS: controlla se ci sono nuovi SMS non letti e invoca on_sms_received per ciascuno.
         sms_poll();
 
+        modem_reject_incoming_call();
+
         // Legge la tensione esterna (VEXT) tramite ADC.
         /* Lettura VEXT con media mobile */
         float vext = read_vext_avg();

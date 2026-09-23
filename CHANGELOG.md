@@ -4,6 +4,13 @@ Tutte le modifiche rilevanti al firmware sono documentate qui.
 Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.1.0/),
 versionamento secondo [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.8.0] - 2026-07
+
+### Aggiunto
+- Rifiuto automatico delle chiamate vocali in arrivo: controllo
+  dell'URC "RING" ogni ciclo del loop principale (~5s), con ATH
+  automatico se rilevato. Protegge da spam/dispetti telefonici.
+
 ## [1.7.7] - 2026-07
 
 ### Rimosso
